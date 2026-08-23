@@ -10,10 +10,10 @@ trap cleanup EXIT
 
 TEST_ROOT=$TEMP_DIR/repository
 FAKE_BIN=$TEMP_DIR/bin
-mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/extension" "$TEST_ROOT/secrets" "$FAKE_BIN"
+mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/secrets" "$FAKE_BIN"
 cp "$ROOT/mcb" "$TEST_ROOT/mcb"
 cp "$ROOT/scripts/bootstrap-compose.sh" "$TEST_ROOT/scripts/bootstrap-compose.sh"
-touch "$TEST_ROOT/Dockerfile" "$TEST_ROOT/docker-compose.yml" "$TEST_ROOT/extension/manifest.json"
+touch "$TEST_ROOT/docker-compose.yml"
 printf 'sentinel-master-key\n' >"$TEST_ROOT/secrets/master-key"
 chmod 0700 "$TEST_ROOT/secrets"
 chmod 0444 "$TEST_ROOT/secrets/master-key"
@@ -26,6 +26,7 @@ case " $* " in
     *' --version '*) printf 'Docker version test\n' ;;
     *' info '*) exit 0 ;;
     *' image inspect '*) exit 0 ;;
+    *' build -t '*) exit 0 ;;
     *' compose run '*' user list '*)
         if [[ -n ${FAKE_DOCKER_STATE:-} ]]; then
             if [[ -f $FAKE_DOCKER_STATE/browser-publisher ]]; then
@@ -59,6 +60,11 @@ case " $* " in
         printf 'fake-reader-password\n'
         ;;
     *' compose up -d broker '*) exit 0 ;;
+    *' compose down '*)
+        if [[ -n ${FAKE_DOCKER_STATE:-} ]]; then
+            printf 'down\n' >>"$FAKE_DOCKER_STATE/down-calls"
+        fi
+        ;;
     *' compose ps -q broker '*) printf 'fake-container\n' ;;
     *" inspect --format {{.State.Running}} fake-container "*) printf 'true\n' ;;
     *) printf 'unexpected fake docker command: %s\n' "$*" >&2; exit 1 ;;
@@ -72,29 +78,58 @@ EOF
 chmod +x "$FAKE_BIN/curl"
 
 help_output=$(cd / && "$TEST_ROOT/mcb" help)
-[[ $help_output == *'setup'* && $help_output == *'extension-path'* ]]
+[[ $help_output == *'setup'* && $help_output == *'browser-help'* ]]
+[[ $help_output != *'extension-path'* ]]
 
 if (cd / && "$TEST_ROOT/mcb" unknown) >/dev/null 2>&1; then
     printf 'unknown command unexpectedly succeeded\n' >&2
     exit 1
 fi
 
-expected_extension=$TEST_ROOT/extension
-actual_extension=$(cd / && "$TEST_ROOT/mcb" extension-path)
-[[ $actual_extension == "$expected_extension" ]]
+if (cd / && "$TEST_ROOT/mcb" extension-path) >/dev/null 2>&1; then
+    printf 'removed extension-path command unexpectedly succeeded\n' >&2
+    exit 1
+fi
+
+browser_help=$(cd / && "$TEST_ROOT/mcb" browser-help)
+[[ $browser_help == *'SSH tunnel'* ]]
+[[ $browser_help == *'http://127.0.0.1:8787'* ]]
+[[ $browser_help != *'password'* ]]
+
+SOURCE_ROOT=$TEMP_DIR/source-repository
+mkdir -p "$SOURCE_ROOT/scripts" "$SOURCE_ROOT/secrets" "$SOURCE_ROOT/cmd" "$SOURCE_ROOT/internal"
+cp "$ROOT/mcb" "$SOURCE_ROOT/mcb"
+cp "$ROOT/scripts/bootstrap-compose.sh" "$SOURCE_ROOT/scripts/bootstrap-compose.sh"
+touch "$SOURCE_ROOT/Dockerfile" "$SOURCE_ROOT/docker-compose.yml" "$SOURCE_ROOT/go.mod"
+printf 'source-sentinel-master-key\n' >"$SOURCE_ROOT/secrets/master-key"
+chmod 0700 "$SOURCE_ROOT/secrets"
+chmod 0444 "$SOURCE_ROOT/secrets/master-key"
+PATH="$FAKE_BIN:$PATH" "$SOURCE_ROOT/mcb" setup --rebuild >"$TEMP_DIR/source-setup.log"
+grep -q 'Broker image built' "$TEMP_DIR/source-setup.log"
+! grep -qi 'extension path\|extension/' "$TEMP_DIR/source-setup.log"
 
 before=$(cksum "$TEST_ROOT/secrets/master-key")
-PATH="$FAKE_BIN:$PATH" COOKIE_BROKER_URL=http://127.0.0.1:9 "$TEST_ROOT/mcb" setup >/dev/null
-PATH="$FAKE_BIN:$PATH" COOKIE_BROKER_URL=http://127.0.0.1:9 "$TEST_ROOT/mcb" setup >/dev/null
+PATH="$FAKE_BIN:$PATH" "$TEST_ROOT/mcb" setup >"$TEMP_DIR/minimal-setup.log"
+PATH="$FAKE_BIN:$PATH" "$TEST_ROOT/mcb" setup >"$TEMP_DIR/minimal-setup-repeat.log"
 after=$(cksum "$TEST_ROOT/secrets/master-key")
 [[ $before == "$after" ]]
+! grep -qi 'extension path\|extension/' "$TEMP_DIR/minimal-setup.log"
+
+PATH="$FAKE_BIN:$PATH" "$TEST_ROOT/mcb" status >"$TEMP_DIR/status.log"
+! grep -qi 'extension' "$TEMP_DIR/status.log"
+
+mkdir "$TEMP_DIR/down-state"
+printf 'persistent\n' >"$TEMP_DIR/down-state/data-sentinel"
+PATH="$FAKE_BIN:$PATH" FAKE_DOCKER_STATE="$TEMP_DIR/down-state" "$TEST_ROOT/mcb" down >/dev/null
+[[ -f $TEMP_DIR/down-state/down-calls ]]
+[[ $(<"$TEMP_DIR/down-state/data-sentinel") == persistent ]]
 
 FIRST_RUN_ROOT=$TEMP_DIR/first-run-repository
 FIRST_RUN_STATE=$TEMP_DIR/first-run-state
-mkdir -p "$FIRST_RUN_ROOT/scripts" "$FIRST_RUN_ROOT/extension" "$FIRST_RUN_ROOT/secrets" "$FIRST_RUN_STATE"
+mkdir -p "$FIRST_RUN_ROOT/scripts" "$FIRST_RUN_ROOT/secrets" "$FIRST_RUN_STATE"
 cp "$ROOT/mcb" "$FIRST_RUN_ROOT/mcb"
 cp "$ROOT/scripts/bootstrap-compose.sh" "$FIRST_RUN_ROOT/scripts/bootstrap-compose.sh"
-touch "$FIRST_RUN_ROOT/Dockerfile" "$FIRST_RUN_ROOT/docker-compose.yml" "$FIRST_RUN_ROOT/extension/manifest.json"
+touch "$FIRST_RUN_ROOT/docker-compose.yml"
 printf 'first-run-sentinel-master-key\n' >"$FIRST_RUN_ROOT/secrets/master-key"
 chmod 0700 "$FIRST_RUN_ROOT/secrets"
 chmod 0444 "$FIRST_RUN_ROOT/secrets/master-key"
@@ -127,6 +162,7 @@ grep -q 'Existing reader password file preserved' "$TEMP_DIR/first-run-repeat.lo
 
 PATH="$FAKE_BIN:$PATH" "$TEST_ROOT/mcb" doctor >"$TEMP_DIR/doctor-warning.log"
 grep -q 'Result: healthy' "$TEMP_DIR/doctor-warning.log"
+! grep -qi 'extension' "$TEMP_DIR/doctor-warning.log"
 chmod 0600 "$TEST_ROOT/secrets/master-key"
 : >"$TEST_ROOT/secrets/master-key"
 if PATH="$FAKE_BIN:$PATH" "$TEST_ROOT/mcb" doctor >/dev/null; then

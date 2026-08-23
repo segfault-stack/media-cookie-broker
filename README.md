@@ -2,7 +2,7 @@
 
 # 🍪 Media Cookie Broker
 
-### Your server shouldn't need a browser just because its cookies expired.
+### Browser auth for unattended software — without running the browser on the server.
 
 **Human-in-the-loop browser authentication maintenance for unattended media software.**
 
@@ -11,7 +11,7 @@
 ![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)
 ![Chromium MV3](https://img.shields.io/badge/Chromium-MV3-4285F4?logo=googlechrome&logoColor=white)
 
-[Quick start](#-try-it-in-5-minutes) ·
+[Quick start](#-quick-start) ·
 [How it works](#-what-happens-when-auth-dies) ·
 [Integration](#-keep-using-cookiestxt) ·
 [Security](#-security) ·
@@ -21,16 +21,16 @@
 
 ---
 
-Your downloader, bot, NAS, or media service can run for weeks with a normal Netscape `cookies.txt`.
+Your downloader, bot, NAS, or media service runs remotely. Your logged-in browser stays with you. Media Cookie Broker connects those two worlds only when a provider needs a human again.
 
 Then a provider wants a **real browser** again — login, CAPTCHA, 2FA, account confirmation, or another interactive step.
 
-Media Cookie Broker handles that moment:
+Media Cookie Broker handles that moment across two machines:
 
 > **consumer reports auth failure → Chrome notifies you → you click Refresh session → log in normally → fresh cookie revision goes back to the server**
 
-No permanent browser on the VPS.  
-No VNC session beside every downloader.  
+No permanent browser on the server.
+No VNC session beside every downloader.
 No manual cookie export + SCP ritual.
 
 > **Existing software does not need to understand Media Cookie Broker. If it reads `cookies.txt`, it can keep reading `cookies.txt`.**
@@ -38,19 +38,52 @@ No manual cookie export + SCP ritual.
 > [!WARNING]
 > **Public preview.** Browser cookies are bearer credentials. Use HTTPS for non-loopback deployments and read [SECURITY.md](SECURITY.md) before putting a broker on a real network.
 
-<p align="center">
-  <img
-    src="docs/demo/media-cookie-broker-demo.gif"
-    alt="Media Cookie Broker demo: a consumer reports authentication required, the browser notifies the operator, the operator refreshes the session, and a fresh revision becomes healthy."
-    width="960"
-  />
-</p>
+## Two machines by design
+
+```text
+YOUR SERVER / VPS / NAS                    YOUR COMPUTER
+
+┌──────────────────────┐                  ┌──────────────────────┐
+│ media app            │                  │ Chromium             │
+│ cookie-sync          │                  │ MCB extension        │
+│                      │                  │                      │
+│ Media Cookie Broker  │◄── SSH tunnel ──►│ human                │
+└──────────────────────┘    or HTTPS      └──────────────────────┘
+          │
+          ▼
+      cookies.txt
+```
+
+> **The browser is intentionally not on the server.** The broker stays loopback-bound by default; the desktop reaches it through an SSH tunnel for the quick start, or through protected HTTPS/private networking for a persistent deployment.
 
 ---
 
-## 🚀 Try it in 5 minutes
+## 🚀 Quick start
 
-### 1. Run setup
+### 🖥️ 1. On the server
+
+Download and inspect the server installer:
+
+```bash
+curl -fsSLO \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-server.sh
+
+less install-server.sh
+bash install-server.sh
+```
+
+It builds the broker image from temporary source, then keeps only a minimal server runtime under:
+
+```text
+${XDG_DATA_HOME:-$HOME/.local/share}/media-cookie-broker
+```
+
+Setup prints the server-local endpoint, publisher username, **one-time publisher password**, and reader credential location. Running it again preserves the key, database, users, credentials, and snapshots; an existing plaintext publisher password cannot be recovered or silently rotated.
+
+The broker remains available only at `127.0.0.1:8787` on the server by default.
+
+<details>
+<summary><strong>Developer/source-tree setup</strong></summary>
 
 ```bash
 git clone https://github.com/segfault-stack/media-cookie-broker.git
@@ -58,84 +91,66 @@ cd media-cookie-broker
 ./mcb setup
 ```
 
-`mcb` does the boring part for you:
-
-```text
-✓ Docker + Compose
-✓ broker master key
-✓ publisher + reader
-✓ broker image
-✓ startup + health check
-✓ reader password file
-✓ exact extension path
-```
-
-At the end it prints the **one-time publisher password** and the exact Chromium extension path.
-
-Running setup again is safe: it preserves the key, database, users, credentials, and snapshots.
-
-### 2. Load the extension
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. **Load unpacked** → choose the path printed by `./mcb setup`
-4. Open **Details** → enable **Allow in incognito**
-5. Open **Settings and guide**
-6. Enter:
-   - broker: `http://127.0.0.1:8787`
-   - username: `browser-publisher`
-   - publisher password printed during setup
-
-### 3. Refresh your first session
-
-In the extension popup:
-
-> **YouTube / default → Refresh session**
-
-Complete the normal Google / YouTube browser flow.
-
-When the popup says:
-
-```text
-Healthy · revision 1
-```
-
-the browser ↔ broker recovery loop is working.
-
-**That's the first success.** Everything after this is consumer integration.
-
----
-
-### Prefer a user-local installer?
-
-Inspect first:
-
-```bash
-curl -fsSLO \
-  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh
-
-less install.sh
-bash install.sh
-```
-
-It installs under:
-
-```text
-${XDG_DATA_HOME:-$HOME/.local/share}/media-cookie-broker
-```
-
-No `sudo`, no systemd service, no shell startup-file edits, no browser-policy hacks.
-
-<details>
-<summary><strong>I know what <code>curl | bash</code> means</strong></summary>
-
-```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh \
-  | bash
-```
+This source-tree mode can build the image itself and supports `./mcb setup --rebuild`.
 
 </details>
+
+### 💻 2. On your computer
+
+Open an SSH tunnel to the server and leave it running:
+
+```bash
+ssh -N -L 8787:127.0.0.1:8787 user@your-server
+```
+
+`127.0.0.1` is the desktop end of the tunnel here; the broker itself remains loopback-only on the server.
+
+Then install the independent desktop component:
+
+1. Download `media-cookie-broker-extension-<tag>.zip` from [GitHub Releases](https://github.com/segfault-stack/media-cookie-broker/releases).
+2. Extract the ZIP on your computer.
+3. Open `chrome://extensions` and enable **Developer mode**.
+4. Choose **Load unpacked** and select the extracted directory.
+5. Open **Details** and enable **Allow in incognito**.
+6. Open **Settings and guide** and enter:
+   - broker: `http://127.0.0.1:8787`
+   - username: `browser-publisher`
+   - the publisher password printed by server setup
+7. In the popup, choose **YouTube / default → Refresh session** and complete the normal browser login flow.
+
+When the popup says `Healthy · revision 1`, the browser ↔ broker recovery loop works.
+
+For an always-on deployment, expose the broker only through protected HTTPS or an appropriate private network path. Never expose it as public plain HTTP.
+
+Developers working from a clone may load `./extension` directly instead of using the release ZIP.
+
+### 🍪 3. Connect a consumer
+
+`cookie-sync` can run on the broker machine or on any authorized consumer host that can reach the broker. It writes ordinary Netscape `cookies.txt`, so existing media software does not need broker-specific logic.
+
+Build the first-party helper with Go 1.24+ on the consumer host:
+
+```bash
+go build -o bin/cookie-sync ./cmd/cookie-sync
+mkdir -p /tmp/media-cookies
+
+BROKER_URL=http://127.0.0.1:8787 \
+BROKER_USERNAME=downloader \
+BROKER_PASSWORD_FILE=secrets/reader-password \
+COOKIE_SYNC_TARGETS='youtube/default=/tmp/media-cookies/youtube.txt' \
+./bin/cookie-sync
+```
+
+Copy the reader credential to the consumer through a secure channel and adjust the broker route and file path for that host. Go is needed only to build this helper, not to run the broker image.
+
+You get:
+
+```text
+/tmp/media-cookies/youtube.txt
+/tmp/media-cookies/youtube.txt.meta.json
+```
+
+Point compatible software at `youtube.txt`.
 
 ---
 
@@ -209,6 +224,8 @@ broker → cookie-sync → cookies.txt → whatever already reads cookies.txt
 ## 📄 Keep using `cookies.txt`
 
 The first-party `cookie-sync` turns broker revisions into a standard Netscape cookie jar.
+
+Run it on the broker host or on another authorized consumer host. The loopback URL below assumes the helper is on the broker host (or has its own protected tunnel); otherwise use the broker's protected HTTPS/private-network address.
 
 For the host-side helper you need **Go 1.24+**:
 
@@ -381,7 +398,7 @@ Security bugs → GitHub **private vulnerability reporting**, not public issues.
 ./mcb logs
 ./mcb logs -f
 ./mcb doctor
-./mcb extension-path
+./mcb browser-help
 ```
 
 If something feels wrong:
@@ -476,9 +493,10 @@ docker compose exec broker \
 ## 🧪 Development
 
 ```bash
-bash -n mcb install.sh scripts/bootstrap-compose.sh tests/*.sh
+bash -n mcb install-server.sh install.sh scripts/*.sh tests/*.sh
 tests/mcb-test.sh
 tests/install-test.sh
+tests/package-extension-test.sh
 
 gofmt -w ./cmd ./internal
 go test ./...

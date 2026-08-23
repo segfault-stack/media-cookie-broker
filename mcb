@@ -8,7 +8,8 @@ BROKER_URL=http://127.0.0.1:$BROKER_PORT
 SECRETS_DIR="$ROOT/secrets"
 MASTER_KEY="$SECRETS_DIR/master-key"
 READER_PASSWORD="$SECRETS_DIR/reader-password"
-EXTENSION_DIR="$ROOT/extension"
+COMPOSE_FILE="$ROOT/docker-compose.yml"
+BOOTSTRAP_SCRIPT="$ROOT/scripts/bootstrap-compose.sh"
 
 ok() {
     printf '✓ %s\n' "$*"
@@ -32,13 +33,13 @@ Usage: ./mcb <command>
 
 Commands:
   setup [--rebuild]
-                  first-run local setup
+                  first-run server setup
   up              start the broker
   down            stop the broker without deleting data
-  status          show local broker status
+  status          show server broker status
   logs [-f]       show recent broker logs
-  doctor          diagnose the local setup
-  extension-path  print the unpacked extension path
+  doctor          diagnose the server setup
+  browser-help    show desktop connection guidance
   help            show this help
 EOF
 }
@@ -47,11 +48,15 @@ compose() {
     (cd -- "$ROOT" && docker compose "$@")
 }
 
-check_repository() {
+check_runtime() {
     local path
-    for path in Dockerfile docker-compose.yml scripts/bootstrap-compose.sh extension/manifest.json; do
-        [[ -e $ROOT/$path ]] || fail "Required repository file is missing: $path" "Run this command from a complete Media Cookie Broker source tree."
+    for path in docker-compose.yml scripts/bootstrap-compose.sh; do
+        [[ -e $ROOT/$path ]] || fail "Required server runtime file is missing: $path" "Restore the Media Cookie Broker server runtime bundle."
     done
+}
+
+source_build_available() {
+    [[ -f $ROOT/Dockerfile && -f $ROOT/go.mod && -d $ROOT/cmd && -d $ROOT/internal ]]
 }
 
 check_docker_cli() {
@@ -67,7 +72,7 @@ check_daemon() {
 }
 
 preflight() {
-    check_repository
+    check_runtime
     check_docker_cli
     check_compose
     check_daemon
@@ -93,8 +98,19 @@ prepare_image() {
     local rebuild=$1
     local build_log
     if [[ $rebuild == false ]] && image_available; then
-        ok "Broker image ready ($IMAGE; use ./mcb setup --rebuild to rebuild)"
+        if source_build_available; then
+            ok "Broker image ready ($IMAGE; use ./mcb setup --rebuild to rebuild)"
+        else
+            ok "Broker image ready ($IMAGE)"
+        fi
         return
+    fi
+
+    if ! source_build_available; then
+        if [[ $rebuild == true ]]; then
+            fail "Cannot rebuild $IMAGE from this installed server runtime." "Re-run the server installer to prepare a fresh image."
+        fi
+        fail "Broker image $IMAGE is missing." "Re-run the server installer to prepare it, then run ./mcb setup again."
     fi
 
     build_log=$(mktemp)
@@ -284,7 +300,9 @@ print_setup_summary() {
         printf '  password: %s\n' "$PUBLISHER_PASSWORD"
         printf '  This password is shown once; paste it into the extension now.\n'
     else
-        printf '  password: existing password is not recoverable from the broker\n'
+        printf '  password: existing plaintext password is not recoverable\n'
+        printf '  Reset explicitly if needed:\n'
+        printf '    docker compose run --rm --no-deps --entrypoint brokerctl broker user passwd browser-publisher\n'
     fi
     printf '\nReader\n'
     printf '  username: downloader\n'
@@ -293,19 +311,18 @@ print_setup_summary() {
     else
         printf '  password file: missing; reset the existing reader explicitly if needed\n'
     fi
-    printf '\nBrowser extension\n'
-    printf '  %s\n' "$EXTENSION_DIR"
-    printf '\nNext\n'
-    printf '  1. Open chrome://extensions\n'
-    printf '  2. Enable Developer mode\n'
-    printf '  3. Load unpacked: %s\n' "$EXTENSION_DIR"
-    printf '  4. Open extension Details and enable "Allow in incognito"\n'
-    printf '  5. Open "Settings and guide"\n'
-    printf '  6. Broker URL: %s\n' "$BROKER_URL"
-    printf '  7. Username: browser-publisher\n'
-    printf '  8. Paste the publisher password shown above\n'
-    printf '  9. Open the popup and click "Refresh session"\n'
-    printf '\nBroker\n  %s\n' "$BROKER_URL"
+    printf '\nBroker\n'
+    printf '  local endpoint: %s\n' "$BROKER_URL"
+    printf '\nNext — on your desktop/browser machine\n'
+    printf '  1. Download the Media Cookie Broker extension ZIP from GitHub Releases.\n'
+    printf '  2. Create an SSH tunnel:\n'
+    printf '       ssh -N -L %s:127.0.0.1:%s user@your-server\n' "$BROKER_PORT" "$BROKER_PORT"
+    printf '  3. Extract the ZIP and load the extension in Chromium.\n'
+    printf '  4. Broker URL: %s\n' "$BROKER_URL"
+    printf '  5. Username: browser-publisher\n'
+    printf '  6. Paste the publisher password shown above.\n'
+    printf '  7. Click Refresh session.\n'
+    printf '\nFor a permanent remote endpoint, use HTTPS or appropriate private networking.\n'
 }
 
 command_setup() {
@@ -323,8 +340,8 @@ command_setup() {
     trap 'if [[ -n ${READER_PASSWORD_TEMP:-} ]]; then rm -f -- "$READER_PASSWORD_TEMP"; fi' EXIT
 
     printf 'Media Cookie Broker setup\n\n'
-    check_repository
-    ok "Repository root ($ROOT)"
+    check_runtime
+    ok "Server runtime ready ($ROOT)"
     check_docker_cli
     ok "Docker found"
     check_compose
@@ -353,7 +370,7 @@ command_up() {
 
 command_down() {
     [[ $# -eq 0 ]] || fail "Usage: ./mcb down"
-    check_repository
+    check_runtime
     check_docker_cli
     check_compose
     check_daemon
@@ -369,7 +386,7 @@ command_status() {
         ok "Broker container running"
     else
         warn "Broker container is not running"
-        printf 'Broker: %s\nExtension: %s\n' "$BROKER_URL" "$EXTENSION_DIR"
+        printf 'Broker: %s\nImage: %s\n' "$BROKER_URL" "$IMAGE"
         return 1
     fi
     if health_check; then
@@ -379,7 +396,7 @@ command_status() {
         printf '  Run ./mcb logs for details.\n'
         return 1
     fi
-    printf '\nBroker: %s\nExtension: %s\n' "$BROKER_URL" "$EXTENSION_DIR"
+    printf '\nBroker: %s\nImage: %s\n' "$BROKER_URL" "$IMAGE"
 }
 
 command_logs() {
@@ -430,10 +447,10 @@ command_doctor() {
     DOCTOR_WARNINGS=0
     printf 'Media Cookie Broker doctor\n\n'
 
-    if [[ -f $ROOT/docker-compose.yml && -f $ROOT/Dockerfile ]]; then
-        doctor_pass "Repository root ($ROOT)"
+    if [[ -f $COMPOSE_FILE && -x $BOOTSTRAP_SCRIPT ]]; then
+        doctor_pass "Server runtime bundle ($ROOT)"
     else
-        doctor_fail "Required repository files are missing"
+        doctor_fail "Required server runtime files are missing"
     fi
     if command -v docker >/dev/null 2>&1; then
         doctor_pass "$(docker --version 2>/dev/null || printf 'Docker CLI found')"
@@ -478,11 +495,6 @@ command_doctor() {
     else
         doctor_fail "healthz is unreachable at $BROKER_URL/healthz"
     fi
-    if [[ -f $EXTENSION_DIR/manifest.json ]]; then
-        doctor_pass "Extension manifest exists"
-    else
-        doctor_fail "Extension manifest is missing"
-    fi
     if [[ -e $READER_PASSWORD ]]; then
         if valid_password_file "$READER_PASSWORD"; then
             doctor_pass "Reader password file exists"
@@ -500,7 +512,8 @@ command_doctor() {
     fi
 
     printf '\nLocal paths\n'
-    printf '  extension: %s\n' "$EXTENSION_DIR"
+    printf '  runtime root: %s\n' "$ROOT"
+    printf '  compose file: %s\n' "$COMPOSE_FILE"
     printf '  reader password: %s\n' "$READER_PASSWORD"
     printf '\n'
     if ((DOCTOR_FAILURES > 0)); then
@@ -508,6 +521,17 @@ command_doctor() {
         return 1
     fi
     printf 'Result: healthy (%d warning(s))\n' "$DOCTOR_WARNINGS"
+}
+
+command_browser_help() {
+    [[ $# -eq 0 ]] || fail "Usage: ./mcb browser-help"
+    printf 'Broker local endpoint:\n  %s\n\n' "$BROKER_URL"
+    printf 'To use the browser extension from another computer:\n\n'
+    printf '  Option A — SSH tunnel\n'
+    printf '    ssh -N -L %s:127.0.0.1:%s user@your-server\n' "$BROKER_PORT" "$BROKER_PORT"
+    printf '    Extension broker URL: %s\n\n' "$BROKER_URL"
+    printf '  Option B — protected remote endpoint\n'
+    printf '    Put the broker behind HTTPS or appropriate private networking.\n'
 }
 
 main() {
@@ -522,10 +546,7 @@ main() {
         status) command_status "$@" ;;
         logs) command_logs "$@" ;;
         doctor) command_doctor "$@" ;;
-        extension-path)
-            [[ $# -eq 0 ]] || fail "Usage: ./mcb extension-path"
-            printf '%s\n' "$EXTENSION_DIR"
-            ;;
+        browser-help) command_browser_help "$@" ;;
         help | --help | -h)
             [[ $# -eq 0 ]] || fail "Usage: ./mcb help"
             usage
