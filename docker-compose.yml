@@ -1,0 +1,37 @@
+name: media-cookie-broker
+
+services:
+  broker:
+    image: ${COOKIE_BROKER_IMAGE:-media-cookie-broker:preview}
+    environment:
+      BROKER_LISTEN_ADDR: 0.0.0.0:8787
+      BROKER_DB_PATH: /data/broker.sqlite3
+    ports:
+      - 127.0.0.1:8787:8787
+    volumes:
+      - broker-data:/data
+    secrets:
+      - master-key
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8787/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    mem_limit: 256m
+    memswap_limit: 320m
+    cpus: 0.5
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+secrets:
+  master-key:
+    file: ./secrets/master-key
+
+volumes:
+  broker-data:

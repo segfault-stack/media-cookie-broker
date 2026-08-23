@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+.local
+bin
+data
+secrets
+extension
+deploy
+README.md
+tests
+*.sqlite3*

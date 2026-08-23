@@ -1,0 +1,6 @@
+/data/
+/bin/
+/.local/
+/secrets/
+.env
+*.sqlite3*

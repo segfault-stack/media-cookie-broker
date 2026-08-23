@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Media Cookie Broker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="popup">
+  <header class="brand"><img src="icon128.png" alt=""><div><div class="eyebrow">MEDIA COOKIE BROKER</div><h1>Publisher status</h1></div></header>
+  <div id="mode" class="context"></div>
+  <div id="broker-connectivity" class="context"></div>
+  <div id="setup-required" class="setup-required" hidden>Configure the broker connection in Settings first.</div>
+  <div id="action-result" aria-live="polite"></div>
+  <div id="status" class="status"></div>
+  <div class="actions">
+    <button id="sync">↻ <span>Sync ordinary browser providers</span></button>
+    <button id="poll">Check broker status</button>
+    <button id="options">Settings and guide</button>
+  </div>
+  <p class="hint">Notifications open this status view. Interactive recovery starts only after you select Refresh session.</p>
+</main>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

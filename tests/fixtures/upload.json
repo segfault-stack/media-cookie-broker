@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-16T00:00:00Z",
+  "cookies": [
+    {
+      "domain": ".youtube.com",
+      "path": "/",
+      "name": "SID",
+      "value": "container-smoke-value",
+      "expiration": 0,
+      "secure": true,
+      "http_only": true,
+      "same_site": "unspecified"
+    }
+  ]
+}

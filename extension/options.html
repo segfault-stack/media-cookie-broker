@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Media Cookie Broker settings</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="settings">
+  <header class="brand">
+    <img src="icon128.png" alt="">
+    <div><div class="eyebrow">MEDIA COOKIE BROKER</div><h1>Publisher settings</h1></div>
+  </header>
+  <p id="context" class="context"></p>
+
+  <section class="card guide">
+    <div class="section-heading"><span class="section-icon">✓</span><div><h2>YouTube quick start</h2><p>Refresh a selected broker profile from an interactive browser session</p></div></div>
+    <ol>
+      <li>Open <code>chrome://extensions</code>, select Details, and enable <strong>Allow in incognito</strong> for this extension.</li>
+      <li>Save the broker connection and dedicated publisher credential below.</li>
+      <li>From the status popup in a regular window, select <strong>Refresh session</strong> for a YouTube profile.</li>
+      <li>Close every other incognito window, then sign in interactively in the broker-created window. The extension continues to <code>youtube.com/robots.txt</code>.</li>
+      <li>With isolation enabled, only the broker-created incognito window closes after a successful publish.</li>
+    </ol>
+    <p class="hint">Only <code>youtube.com</code> cookies are captured for YouTube. Google login navigation is not part of the exported cookie scope.</p>
+  </section>
+
+  <section class="card">
+    <div class="section-heading"><span class="section-icon">⚙</span><div><h2>Broker connection</h2><p>No endpoint is configured by default</p></div></div>
+    <label>Broker URL<input id="endpoint" type="url" placeholder="https://broker.example.com"></label>
+    <small>HTTPS is required except for loopback development URLs. Saving requests access only to this origin.</small>
+    <label>Publisher username<input id="username" autocomplete="username"></label>
+    <label>Publisher password<input id="password" type="password" autocomplete="current-password"></label>
+    <small>Stored in extension local storage. Use a dedicated, provider/profile-scoped broker credential.</small>
+    <div class="form-row"><label>Sync interval<input id="interval" type="number" min="2" max="5"><small>2–5 minutes</small></label></div>
+    <label>Expiry warning thresholds (hours)<input id="expiry-thresholds" placeholder="24, 6, 1"></label>
+    <small>Comma-separated, descending thresholds. Leave empty to disable proactive expiry notifications.</small>
+    <label class="check"><input id="youtube-incognito" type="checkbox"><span>Require a fresh incognito session for YouTube recovery</span></label>
+    <small>Enabled by default. Chrome shares one cookie store across incognito windows, so recovery is refused while another incognito window exists. If disabled, recovery uses your current ordinary browser session and never closes its normal window.</small>
+    <fieldset><legend>Providers to publish</legend><div id="providers"></div></fieldset>
+    <button id="save" class="primary save-button">Save and check broker</button>
+    <span id="result" class="result"></span>
+  </section>
+
+  <section class="card">
+    <div class="section-heading"><span class="section-icon">⌕</span><div><h2>Diagnostics</h2><p>Redacted local history; remote batches are separated by provider</p></div></div>
+    <label class="check"><input id="remote-diagnostics" type="checkbox"><span>Upload redacted diagnostics to this broker</span></label>
+    <small>Off by default. Local bounded diagnostics continue independently; only provider/profile-scoped events are eligible for remote upload.</small>
+    <p id="diagnostic-state" class="hint"></p>
+    <input id="diagnostic-filter" placeholder="Filter type, provider, or error">
+    <div class="diagnostic-actions">
+      <button id="diagnostic-copy">Copy visible</button>
+      <button id="diagnostic-download">Download JSON</button>
+      <button id="diagnostic-clear">Clear history</button>
+    </div>
+    <pre id="diagnostic-events" class="diagnostic-events"></pre>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>
