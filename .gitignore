@@ -4,3 +4,6 @@
 /secrets/
 .env
 *.sqlite3*
+/demo/node_modules/
+/demo/.remotion/
+/demo/out/

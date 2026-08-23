@@ -38,6 +38,14 @@ No manual cookie export + SCP ritual.
 > [!WARNING]
 > **Public preview.** Browser cookies are bearer credentials. Use HTTPS for non-loopback deployments and read [SECURITY.md](SECURITY.md) before putting a broker on a real network.
 
+<p align="center">
+  <img
+    src="docs/demo/media-cookie-broker-demo.gif"
+    alt="Media Cookie Broker demo: a consumer reports authentication required, the browser notifies the operator, the operator refreshes the session, and a fresh revision becomes healthy."
+    width="960"
+  />
+</p>
+
 ---
 
 ## 🚀 Try it in 5 minutes
@@ -518,4 +526,3 @@ More detail:
 MIT — see [LICENSE](LICENSE).
 
 </div>
-
