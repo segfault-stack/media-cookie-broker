@@ -49,7 +49,7 @@ case " $* " in
     *' compose version '*) printf 'Docker Compose version v2.test\n' ;;
     *' --version '*) printf 'Docker version test\n' ;;
     *' info '*) exit 0 ;;
-    *' build -t media-cookie-broker:preview '*) touch "$FAKE_DOCKER_STATE/image-built" ;;
+    *' build --target broker -t media-cookie-broker:preview '*) touch "$FAKE_DOCKER_STATE/image-built" ;;
     *' image inspect media-cookie-broker:preview '*) [[ -f $FAKE_DOCKER_STATE/image-built ]] ;;
     *' run --rm --entrypoint brokerctl media-cookie-broker:preview generate-key '*) printf 'fake-generated-key\n' ;;
     *' compose run '*' user list '*)
@@ -82,7 +82,7 @@ PATH="$FAKE_BIN:$PATH" \
     FAKE_DOCKER_STATE="$FAKE_STATE" \
     XDG_DATA_HOME="$XDG_ROOT" \
     TMPDIR="$INSTALL_TMP" \
-    "$ROOT/install-server.sh" >"$TEMP_DIR/install.log"
+    "$ROOT/install.sh" >"$TEMP_DIR/install.log"
 
 INSTALL_ROOT=$XDG_ROOT/media-cookie-broker
 [[ -x $INSTALL_ROOT/mcb ]]
@@ -100,10 +100,11 @@ if find "$INSTALL_ROOT" -type f -name '*.go' -print -quit | grep -q .; then
     exit 1
 fi
 ! grep -qi 'extension path\|/extension' "$TEMP_DIR/install.log"
-! grep -Eq '(^|[^[:alnum:]_])sudo([^[:alnum:]_]|$)|systemctl|crontab|chrome://|\.bashrc|\.zshrc' "$ROOT/install-server.sh"
+! grep -Eq '(^|[^[:alnum:]_])sudo([^[:alnum:]_]|$)|systemctl|crontab|chrome://|\.bashrc|\.zshrc' "$ROOT/install.sh"
+[[ $(wc -l <"$ROOT/install-server.sh") -lt 20 ]]
 [[ -z $(find "$INSTALL_TMP" -mindepth 1 -print -quit) ]]
 
-build_line=$(grep -n '^build -t media-cookie-broker:preview ' "$FAKE_STATE/commands" | head -n1 | cut -d: -f1)
+build_line=$(grep -n '^build --target broker -t media-cookie-broker:preview ' "$FAKE_STATE/commands" | head -n1 | cut -d: -f1)
 setup_line=$(grep -n 'compose run .* user list' "$FAKE_STATE/commands" | head -n1 | cut -d: -f1)
 [[ -n $build_line && -n $setup_line && $build_line -lt $setup_line ]]
 
@@ -116,15 +117,16 @@ PATH="$FAKE_BIN:$PATH" FAKE_DOCKER_STATE="$FAKE_STATE" \
     "$INSTALL_ROOT/mcb" status >"$TEMP_DIR/status.log"
 ! grep -qi 'extension' "$TEMP_DIR/status.log"
 
-if PATH="$FAKE_BIN:$PATH" \
+master_before=$(cksum "$INSTALL_ROOT/secrets/master-key")
+reader_before=$(cksum "$INSTALL_ROOT/secrets/reader-password")
+PATH="$FAKE_BIN:$PATH" \
     FIXTURE_ARCHIVE="$TEMP_DIR/source.tar.gz" \
     FAKE_DOCKER_STATE="$FAKE_STATE" \
     XDG_DATA_HOME="$XDG_ROOT" \
     TMPDIR="$INSTALL_TMP" \
-    "$ROOT/install-server.sh" >/dev/null 2>&1; then
-    printf 'installer unexpectedly replaced an existing installation\n' >&2
-    exit 1
-fi
-
-[[ -s $INSTALL_ROOT/secrets/master-key ]]
+    "$ROOT/install.sh" >"$TEMP_DIR/reinstall.log"
+grep -q 'Existing Media Cookie Broker installation found' "$TEMP_DIR/reinstall.log"
+[[ $(cksum "$INSTALL_ROOT/secrets/master-key") == "$master_before" ]]
+[[ $(cksum "$INSTALL_ROOT/secrets/reader-password") == "$reader_before" ]]
+[[ $(grep -c '^build --target broker ' "$FAKE_STATE/commands") == 1 ]]
 printf 'installer shell tests passed\n'

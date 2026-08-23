@@ -27,9 +27,13 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the current contracts. YouTube's 
 ## Development checks
 
 ```bash
-bash -n mcb install.sh scripts/bootstrap-compose.sh tests/*.sh
+bash -n mcb install*.sh scripts/*.sh tests/*.sh
 tests/mcb-test.sh
 tests/install-test.sh
+tests/install-extension-test.sh
+tests/install-cookie-sync-test.sh
+tests/package-extension-test.sh
+tests/onboarding-docs-test.sh
 gofmt -w ./cmd ./internal
 go test ./...
 go test -race ./...
@@ -42,8 +46,11 @@ docker compose config
 When Docker is available:
 
 ```bash
-docker build -t media-cookie-broker:preview .
-COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview tests/container-smoke.sh
+docker build --target broker -t media-cookie-broker:preview .
+docker build --target cookie-sync -t media-cookie-broker-cookie-sync:preview .
+COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview \
+COOKIE_SYNC_TEST_IMAGE=media-cookie-broker-cookie-sync:preview \
+tests/container-smoke.sh
 ```
 
 Do not suppress, weaken, or delete a failing test to make a contribution green.

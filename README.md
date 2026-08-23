@@ -62,38 +62,11 @@ YOUR SERVER / VPS / NAS                    YOUR COMPUTER
 
 ### 🖥️ 1. On the server
 
-Download and inspect the server installer:
-
 ```bash
-curl -fsSLO \
-  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-server.sh
-
-less install-server.sh
-bash install-server.sh
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh | bash
 ```
 
-It builds the broker image from temporary source, then keeps only a minimal server runtime under:
-
-```text
-${XDG_DATA_HOME:-$HOME/.local/share}/media-cookie-broker
-```
-
-Setup prints the server-local endpoint, publisher username, **one-time publisher password**, and reader credential location. Running it again preserves the key, database, users, credentials, and snapshots; an existing plaintext publisher password cannot be recovered or silently rotated.
-
-The broker remains available only at `127.0.0.1:8787` on the server by default.
-
-<details>
-<summary><strong>Developer/source-tree setup</strong></summary>
-
-```bash
-git clone https://github.com/segfault-stack/media-cookie-broker.git
-cd media-cookie-broker
-./mcb setup
-```
-
-This source-tree mode can build the image itself and supports `./mcb setup --rebuild`.
-
-</details>
+It starts the loopback-only broker and prints the publisher credential needed by your browser.
 
 ### 💻 2. On your computer
 
@@ -105,52 +78,31 @@ ssh -N -L 8787:127.0.0.1:8787 user@your-server
 
 `127.0.0.1` is the desktop end of the tunnel here; the broker itself remains loopback-only on the server.
 
-Then install the independent desktop component:
+Install the desktop extension files:
 
-1. Download `media-cookie-broker-extension-<tag>.zip` from [GitHub Releases](https://github.com/segfault-stack/media-cookie-broker/releases).
-2. Extract the ZIP on your computer.
-3. Open `chrome://extensions` and enable **Developer mode**.
-4. Choose **Load unpacked** and select the extracted directory.
-5. Open **Details** and enable **Allow in incognito**.
-6. Open **Settings and guide** and enter:
-   - broker: `http://127.0.0.1:8787`
-   - username: `browser-publisher`
-   - the publisher password printed by server setup
-7. In the popup, choose **YouTube / default → Refresh session** and complete the normal browser login flow.
+```bash
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-extension.sh | bash
+```
+
+Then open `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the printed path → **Allow in incognito**. Set the broker URL to `http://127.0.0.1:8787`, enter `browser-publisher` and the publisher password, then choose **YouTube / default → Refresh session**.
 
 When the popup says `Healthy · revision 1`, the browser ↔ broker recovery loop works.
 
 For an always-on deployment, expose the broker only through protected HTTPS or an appropriate private network path. Never expose it as public plain HTTP.
 
-Developers working from a clone may load `./extension` directly instead of using the release ZIP.
-
 ### 🍪 3. Connect a consumer
 
-`cookie-sync` can run on the broker machine or on any authorized consumer host that can reach the broker. It writes ordinary Netscape `cookies.txt`, so existing media software does not need broker-specific logic.
-
-Build the first-party helper with Go 1.24+ on the consumer host:
-
 ```bash
-go build -o bin/cookie-sync ./cmd/cookie-sync
-mkdir -p /tmp/media-cookies
-
-BROKER_URL=http://127.0.0.1:8787 \
-BROKER_USERNAME=downloader \
-BROKER_PASSWORD_FILE=secrets/reader-password \
-COOKIE_SYNC_TARGETS='youtube/default=/tmp/media-cookies/youtube.txt' \
-./bin/cookie-sync
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-cookie-sync.sh | bash
 ```
 
-Copy the reader credential to the consumer through a secure channel and adjust the broker route and file path for that host. Go is needed only to build this helper, not to run the broker image.
-
-You get:
+It configures the Dockerized sidecar and prints the resulting Netscape cookie file, for example:
 
 ```text
-/tmp/media-cookies/youtube.txt
-/tmp/media-cookies/youtube.txt.meta.json
+~/media-cookies/youtube.txt
 ```
 
-Point compatible software at `youtube.txt`.
+Point your existing software at that file. The consumer can run on the broker host or any authorized host that can reach the broker through loopback, protected HTTPS, or appropriate private networking.
 
 ---
 
@@ -223,31 +175,7 @@ broker → cookie-sync → cookies.txt → whatever already reads cookies.txt
 
 ## 📄 Keep using `cookies.txt`
 
-The first-party `cookie-sync` turns broker revisions into a standard Netscape cookie jar.
-
-Run it on the broker host or on another authorized consumer host. The loopback URL below assumes the helper is on the broker host (or has its own protected tunnel); otherwise use the broker's protected HTTPS/private-network address.
-
-For the host-side helper you need **Go 1.24+**:
-
-```bash
-go build -o bin/cookie-sync ./cmd/cookie-sync
-mkdir -p /tmp/media-cookies
-
-BROKER_URL=http://127.0.0.1:8787 \
-BROKER_USERNAME=downloader \
-BROKER_PASSWORD_FILE=secrets/reader-password \
-COOKIE_SYNC_TARGETS='youtube/default=/tmp/media-cookies/youtube.txt' \
-./bin/cookie-sync
-```
-
-You get:
-
-```text
-/tmp/media-cookies/youtube.txt
-/tmp/media-cookies/youtube.txt.meta.json
-```
-
-Point compatible software at `youtube.txt`.
+The Dockerized `cookie-sync` sidecar turns broker revisions into an ordinary Netscape cookie jar in a host directory shared with your downloader, bot, NAS, or media service.
 
 `cookie-sync` gives you:
 
@@ -261,31 +189,7 @@ Point compatible software at `youtube.txt`.
 
 > Don't want `cookie-sync`? An authorized consumer can use the broker's HTTP/Netscape response directly.
 
----
-
-## 🩺 Optional: let consumers report auth health
-
-A broker-aware wrapper can report what happened while using a specific local revision:
-
-```bash
-cookie-sync report \
-  --provider youtube \
-  --profile default \
-  --file /run/media-cookie-broker/youtube.txt \
-  --kind authentication_required
-```
-
-| Kind | Meaning |
-| --- | --- |
-| `ok` | the revision worked |
-| `authentication_required` | human refresh needed |
-| `access_denied` | upstream denied access |
-| `rate_limited` | upstream rate-limited the consumer |
-| `unknown_failure` | other failure |
-
-The helper verifies the local file against its sidecar before reporting.
-
-In this preview, one valid current-revision `authentication_required` report is enough to trigger human attention.
+See [cookie-sync advanced setup](docs/COOKIE_SYNC.md) for multiple targets, named profiles, metadata, health reports, direct binary use, and manual Compose configuration.
 
 ---
 
@@ -390,24 +294,7 @@ Security bugs → GitHub **private vulnerability reporting**, not public issues.
 
 ## 🛠️ Operator cheat sheet
 
-```bash
-./mcb setup
-./mcb up
-./mcb down
-./mcb status
-./mcb logs
-./mcb logs -f
-./mcb doctor
-./mcb browser-help
-```
-
-If something feels wrong:
-
-```bash
-./mcb doctor
-```
-
-Normal `down` preserves persistent data.
+The installers print the exact status and log commands for each installed instance. See [installation details](docs/INSTALLATION.md) for paths, updates, source setup, and troubleshooting.
 
 ---
 
@@ -493,10 +380,13 @@ docker compose exec broker \
 ## 🧪 Development
 
 ```bash
-bash -n mcb install-server.sh install.sh scripts/*.sh tests/*.sh
+bash -n mcb install*.sh scripts/*.sh tests/*.sh
 tests/mcb-test.sh
 tests/install-test.sh
+tests/install-extension-test.sh
+tests/install-cookie-sync-test.sh
 tests/package-extension-test.sh
+tests/onboarding-docs-test.sh
 
 gofmt -w ./cmd ./internal
 go test ./...
@@ -507,8 +397,11 @@ npm --prefix extension test
 node --check extension/service-worker.js
 
 docker compose config
-docker build -t media-cookie-broker:preview .
-COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview tests/container-smoke.sh
+docker build --target broker -t media-cookie-broker:preview .
+docker build --target cookie-sync -t media-cookie-broker-cookie-sync:preview .
+COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview \
+COOKIE_SYNC_TEST_IMAGE=media-cookie-broker-cookie-sync:preview \
+tests/container-smoke.sh
 ```
 
 ---
@@ -530,6 +423,8 @@ Not in scope right now:
 
 More detail:
 
+- [Installation details](docs/INSTALLATION.md)
+- [cookie-sync advanced setup](docs/COOKIE_SYNC.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Provider notes](docs/PROVIDERS.md)
 - [Contributing](CONTRIBUTING.md)

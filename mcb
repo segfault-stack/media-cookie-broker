@@ -293,15 +293,17 @@ wait_for_health() {
 }
 
 print_setup_summary() {
-    printf '\nSetup complete\n\n'
-    printf 'Publisher (sensitive)\n'
+    printf '\nMedia Cookie Broker is ready 🍪\n\n'
+    printf 'Broker\n'
+    printf '  %s\n' "$BROKER_URL"
+    printf '\nPublisher\n'
     printf '  username: browser-publisher\n'
     if [[ $PUBLISHER_CREATED == true ]]; then
         printf '  password: %s\n' "$PUBLISHER_PASSWORD"
-        printf '  This password is shown once; paste it into the extension now.\n'
+        printf '  This password is shown once.\n'
     else
         printf '  password: existing plaintext password is not recoverable\n'
-        printf '  Reset explicitly if needed:\n'
+        printf '  Reset it explicitly if a new desktop credential is needed:\n'
         printf '    docker compose run --rm --no-deps --entrypoint brokerctl broker user passwd browser-publisher\n'
     fi
     printf '\nReader\n'
@@ -311,17 +313,14 @@ print_setup_summary() {
     else
         printf '  password file: missing; reset the existing reader explicitly if needed\n'
     fi
-    printf '\nBroker\n'
-    printf '  local endpoint: %s\n' "$BROKER_URL"
-    printf '\nNext — on your desktop/browser machine\n'
-    printf '  1. Download the Media Cookie Broker extension ZIP from GitHub Releases.\n'
-    printf '  2. Create an SSH tunnel:\n'
-    printf '       ssh -N -L %s:127.0.0.1:%s user@your-server\n' "$BROKER_PORT" "$BROKER_PORT"
-    printf '  3. Extract the ZIP and load the extension in Chromium.\n'
-    printf '  4. Broker URL: %s\n' "$BROKER_URL"
-    printf '  5. Username: browser-publisher\n'
-    printf '  6. Paste the publisher password shown above.\n'
-    printf '  7. Click Refresh session.\n'
+    printf '\nFrom your computer:\n'
+    printf '  ssh -N -L %s:127.0.0.1:%s user@your-server\n' "$BROKER_PORT" "$BROKER_PORT"
+    printf '\nThen run install-extension.sh and connect it to:\n'
+    printf '  %s\n' "$BROKER_URL"
+    printf '\nUseful commands:\n'
+    printf '  %s/mcb status\n' "$ROOT"
+    printf '  %s/mcb logs\n' "$ROOT"
+    printf '  %s/mcb doctor\n' "$ROOT"
     printf '\nFor a permanent remote endpoint, use HTTPS or appropriate private networking.\n'
 }
 
@@ -341,7 +340,7 @@ command_setup() {
 
     printf 'Media Cookie Broker setup\n\n'
     check_runtime
-    ok "Server runtime ready ($ROOT)"
+    ok "Server runtime ready"
     check_docker_cli
     ok "Docker found"
     check_compose
@@ -505,12 +504,6 @@ command_doctor() {
     else
         doctor_warning "Reader password file is absent (optional until cookie-sync is configured)"
     fi
-    if [[ -x $ROOT/bin/cookie-sync ]]; then
-        doctor_pass "Host cookie-sync binary exists"
-    else
-        doctor_warning "Host cookie-sync binary is not built (optional until file sync is configured)"
-    fi
-
     printf '\nLocal paths\n'
     printf '  runtime root: %s\n' "$ROOT"
     printf '  compose file: %s\n' "$COMPOSE_FILE"

@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 IMAGE=${COOKIE_BROKER_TEST_IMAGE:-media-cookie-broker:preview}
+SYNC_IMAGE=${COOKIE_SYNC_TEST_IMAGE:-media-cookie-broker-cookie-sync:preview}
 BROKER_NAME=${COOKIE_BROKER_TEST_NAME:-cookie-broker-smoke}
 SYNC_NAME=${COOKIE_SYNC_TEST_NAME:-cookie-sync-smoke}
 PORT=${COOKIE_BROKER_TEST_PORT:-18787}
@@ -16,6 +17,8 @@ trap cleanup EXIT
 
 mkdir -m 700 "$TEMP_DIR/data" "$TEMP_DIR/cookies"
 docker rm -f "$SYNC_NAME" "$BROKER_NAME" >/dev/null 2>&1 || true
+[[ $(docker image inspect --format '{{.Config.User}}' "$IMAGE") == broker ]]
+[[ $(docker image inspect --format '{{.Config.User}}' "$SYNC_IMAGE") == broker ]]
 for user_role in publisher:publisher reader:reader; do
     username=${user_role%%:*}
     role=${user_role##*:}
@@ -48,7 +51,6 @@ curl -fsS -u 'publisher:correct horse battery staple' \
 
 docker run -d --rm --name "$SYNC_NAME" \
     --user "$(id -u):$(id -g)" --network "container:$BROKER_NAME" \
-    --entrypoint cookie-sync \
     -e BROKER_URL=http://127.0.0.1:8787 \
     -e BROKER_USERNAME=reader \
     -e BROKER_PASSWORD_FILE=/run/secrets/password \
@@ -57,7 +59,7 @@ docker run -d --rm --name "$SYNC_NAME" \
     -e COOKIE_SYNC_INTERVAL=10s \
     -v "$TEMP_DIR/cookies:/cookies" \
     -v "$ROOT/tests/fixtures/password:/run/secrets/password:ro" \
-    "$IMAGE" >/dev/null
+    "$SYNC_IMAGE" >/dev/null
 
 for _ in {1..40}; do
     [[ -s $TEMP_DIR/cookies/youtube.txt && -s $TEMP_DIR/cookies/cookies.txt ]] && break
@@ -70,13 +72,12 @@ grep -q $'SID\tcontainer-smoke-value' "$TEMP_DIR/cookies/youtube.txt"
 [[ $(stat -c '%a' "$TEMP_DIR/cookies/youtube.txt.meta.json") == 600 ]]
 
 docker run --rm --user "$(id -u):$(id -g)" --network "container:$BROKER_NAME" \
-    --entrypoint cookie-sync \
     -e BROKER_URL=http://127.0.0.1:8787 \
     -e BROKER_USERNAME=reader \
     -e BROKER_PASSWORD_FILE=/run/secrets/password \
     -v "$TEMP_DIR/cookies:/cookies" \
     -v "$ROOT/tests/fixtures/password:/run/secrets/password:ro" \
-    "$IMAGE" report --provider youtube --file /cookies/youtube.txt --kind authentication_required >/dev/null
+    "$SYNC_IMAGE" report --provider youtube --file /cookies/youtube.txt --kind authentication_required >/dev/null
 
 curl -fsS -u 'publisher:correct horse battery staple' \
     "http://127.0.0.1:${PORT}/v1/providers/youtube/status" | grep -q '"auth_health":"refresh_required"'
