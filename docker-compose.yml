@@ -7,7 +7,7 @@ services:
       BROKER_LISTEN_ADDR: 0.0.0.0:8787
       BROKER_DB_PATH: /data/broker.sqlite3
     ports:
-      - 127.0.0.1:8787:8787
+      - 127.0.0.1:${COOKIE_BROKER_PORT:-8787}:8787
     volumes:
       - broker-data:/data
     secrets:

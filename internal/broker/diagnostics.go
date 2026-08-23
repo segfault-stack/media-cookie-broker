@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/segfault-dev/media-cookie-broker/internal/providers"
+	"github.com/segfault-stack/media-cookie-broker/internal/providers"
 )
 
 const maxDiagnosticEvents = 1000

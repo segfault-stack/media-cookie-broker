@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/segfault-dev/media-cookie-broker/internal/broker"
+	"github.com/segfault-stack/media-cookie-broker/internal/broker"
 )
 
 func TestPasswordInputAndGeneration(t *testing.T) {

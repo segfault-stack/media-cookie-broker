@@ -27,11 +27,15 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the current contracts. YouTube's 
 ## Development checks
 
 ```bash
+bash -n mcb install.sh scripts/bootstrap-compose.sh tests/*.sh
+tests/mcb-test.sh
+tests/install-test.sh
 gofmt -w ./cmd ./internal
 go test ./...
 go test -race ./...
 go vet ./...
 npm --prefix extension test
+node --check extension/service-worker.js
 docker compose config
 ```
 

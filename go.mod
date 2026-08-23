@@ -1,4 +1,4 @@
-module github.com/segfault-dev/media-cookie-broker
+module github.com/segfault-stack/media-cookie-broker
 
 go 1.24.0
 

@@ -25,61 +25,57 @@ You click **Refresh session**, complete the provider's normal browser flow, and 
 
 Requirements:
 
-- Docker + Docker Compose
-- Chromium / Chrome / another Chromium-based browser
-- Go 1.24+ only for host builds and development
+- Broker + browser Quick Start: Docker + Docker Compose, plus Chromium / Chrome / another Chromium-based browser
+- First-party host-side `cookie-sync`: Go 1.24+
 
-### 1. Build + bootstrap
+Go is not required to set up the broker, load the extension, or publish a healthy session revision.
+
+### 1. Set up the broker
 
 ```bash
 git clone https://github.com/segfault-stack/media-cookie-broker.git
 cd media-cookie-broker
-
-docker build -t media-cookie-broker:preview .
-./scripts/bootstrap-compose.sh
+./mcb setup
 ```
 
-Create a publisher for the browser extension and a reader for the consumer:
+That one command:
+
+- checks Docker, Compose, and the Docker daemon;
+- builds or reuses the local broker image;
+- creates the master key without replacing an existing one;
+- creates a scoped browser publisher and file reader without duplicating users;
+- stores the reader password in `secrets/reader-password` with mode `0600`;
+- starts the broker and waits for `/healthz`;
+- prints the one-time publisher password and exact unpacked-extension path.
+
+Running `./mcb setup` again is safe: it preserves the key, database, users, credentials, and snapshots. Existing plaintext passwords cannot be recovered from the broker, so save the publisher password when it is first shown.
+
+### Want a user-local installer?
+
+Download and inspect the installer before running it:
 
 ```bash
-COOKIE_BROKER_IMAGE=media-cookie-broker:preview docker compose run --rm \
-  --entrypoint brokerctl broker \
-  user add browser-publisher --role publisher --provider youtube
-
-COOKIE_BROKER_IMAGE=media-cookie-broker:preview docker compose run --rm \
-  --entrypoint brokerctl broker \
-  user add downloader --role reader --provider youtube
+curl -fsSLO \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh
+less install.sh
+bash install.sh
 ```
 
-Each command prints a **one-time random password**. Save both.
+It installs the current `main` source tree under `${XDG_DATA_HOME:-$HOME/.local/share}/media-cookie-broker` and starts the same `mcb setup` flow. It does not use `sudo`, edit shell startup files, or replace an existing installation.
 
-For host-side `cookie-sync`, put the reader password in a protected file:
+The direct pipe form is convenient if you are comfortable executing remote shell code without reviewing it first:
 
 ```bash
-install -m 600 /dev/null secrets/reader-password
-${EDITOR:-vi} secrets/reader-password
-chmod 600 secrets/reader-password
+curl -fsSL \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh \
+  | bash
 ```
 
-### 2. Start the broker
-
-```bash
-COOKIE_BROKER_IMAGE=media-cookie-broker:preview docker compose up -d
-
-curl http://127.0.0.1:8787/healthz
-```
-
-Expected:
-
-```json
-{"status":"ok"}
-```
-
-### 3. Load the extension
+### 2. Load the extension
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
-3. Click **Load unpacked** → select `extension/`.
+3. Click **Load unpacked** → select the absolute extension path printed by `./mcb setup` (you can print it again with `./mcb extension-path`).
 4. Open the extension's **Details** → enable **Allow in incognito**.
 5. Open **Settings and guide**.
 6. Enter:
@@ -89,7 +85,7 @@ Expected:
 
 Remote broker URLs must use HTTPS. Loopback development may use plain HTTP.
 
-### 4. Publish your first session
+### 3. Publish your first session
 
 Open the extension popup:
 
@@ -103,7 +99,11 @@ The extension captures the YouTube-scoped browser state, publishes it to the bro
 Healthy · revision 1
 ```
 
-### 5. Sync an ordinary `cookies.txt`
+At this point the broker/browser flow is working. You can now connect the consumer that needs the refreshed session.
+
+### 4. First integration example: sync an ordinary `cookies.txt`
+
+The first-party host-side `cookie-sync` requires Go 1.24+ to build. It turns broker revisions into an ordinary Netscape cookie file for existing software:
 
 ```bash
 go build -o bin/cookie-sync ./cmd/cookie-sync
@@ -125,7 +125,17 @@ You now have:
 
 Point any compatible software at `youtube.txt`.
 
-That's the whole basic loop.
+`cookie-sync` is an integration option, not a prerequisite for broker setup. Another authorized consumer can integrate directly with the broker HTTP API and its Netscape `cookies.txt` response instead.
+
+For local lifecycle and troubleshooting:
+
+```bash
+./mcb status
+./mcb logs        # add -f to follow
+./mcb doctor      # the best first command for issue triage
+./mcb down        # stops containers; preserves data
+./mcb up
+```
 
 ---
 
@@ -494,11 +504,15 @@ Combined jars intentionally have no single-revision sidecar.
 ## 🧪 Development
 
 ```bash
+bash -n mcb install.sh scripts/bootstrap-compose.sh tests/*.sh
+tests/mcb-test.sh
+tests/install-test.sh
 gofmt -w ./cmd ./internal
 go test ./...
 go test -race ./...
 go vet ./...
 npm --prefix extension test
+node --check extension/service-worker.js
 docker compose config
 docker build -t media-cookie-broker:preview .
 COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview tests/container-smoke.sh
@@ -535,4 +549,3 @@ More detail:
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
-

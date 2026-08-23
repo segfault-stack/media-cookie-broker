@@ -7,11 +7,15 @@ secrets_dir="$repository_dir/secrets"
 master_key="$secrets_dir/master-key"
 image_name=${COOKIE_BROKER_IMAGE:-media-cookie-broker:preview}
 
+if [[ -e $secrets_dir && ( ! -d $secrets_dir || -L $secrets_dir ) ]]; then
+    printf 'Refusing unsafe secrets directory path: %s\n' "$secrets_dir" >&2
+    exit 1
+fi
 mkdir -p "$secrets_dir"
 chmod 0700 "$secrets_dir"
 
 if [[ -e $master_key ]]; then
-    if [[ ! -f $master_key || ! -s $master_key ]]; then
+    if [[ ! -f $master_key || ! -s $master_key || -L $master_key ]]; then
         printf 'Refusing to replace invalid existing path: %s\n' "$master_key" >&2
         exit 1
     fi

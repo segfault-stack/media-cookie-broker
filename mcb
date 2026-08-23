@@ -1,0 +1,541 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+IMAGE=${COOKIE_BROKER_IMAGE:-media-cookie-broker:preview}
+BROKER_PORT=${COOKIE_BROKER_PORT:-8787}
+BROKER_URL=http://127.0.0.1:$BROKER_PORT
+SECRETS_DIR="$ROOT/secrets"
+MASTER_KEY="$SECRETS_DIR/master-key"
+READER_PASSWORD="$SECRETS_DIR/reader-password"
+EXTENSION_DIR="$ROOT/extension"
+
+ok() {
+    printf '✓ %s\n' "$*"
+}
+
+warn() {
+    printf '! %s\n' "$*"
+}
+
+fail() {
+    printf '✗ %s\n' "$1" >&2
+    if [[ $# -gt 1 ]]; then
+        printf '  %s\n' "$2" >&2
+    fi
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: ./mcb <command>
+
+Commands:
+  setup [--rebuild]
+                  first-run local setup
+  up              start the broker
+  down            stop the broker without deleting data
+  status          show local broker status
+  logs [-f]       show recent broker logs
+  doctor          diagnose the local setup
+  extension-path  print the unpacked extension path
+  help            show this help
+EOF
+}
+
+compose() {
+    (cd -- "$ROOT" && docker compose "$@")
+}
+
+check_repository() {
+    local path
+    for path in Dockerfile docker-compose.yml scripts/bootstrap-compose.sh extension/manifest.json; do
+        [[ -e $ROOT/$path ]] || fail "Required repository file is missing: $path" "Run this command from a complete Media Cookie Broker source tree."
+    done
+}
+
+check_docker_cli() {
+    command -v docker >/dev/null 2>&1 || fail "Docker is not installed or is not on PATH." "Install Docker, then run ./mcb setup again."
+}
+
+check_compose() {
+    docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (docker compose)." "Install the Docker Compose plugin, then try again."
+}
+
+check_daemon() {
+    docker info >/dev/null 2>&1 || fail "Docker is installed but the daemon is not reachable." "Start Docker and run ./mcb setup again."
+}
+
+preflight() {
+    check_repository
+    check_docker_cli
+    check_compose
+    check_daemon
+}
+
+show_failure_log() {
+    local message=$1
+    local log_file=$2
+    printf '✗ %s\n' "$message" >&2
+    if [[ -s $log_file ]]; then
+        printf '\n' >&2
+        tail -n 40 "$log_file" >&2
+    fi
+    rm -f -- "$log_file"
+    exit 1
+}
+
+image_available() {
+    docker image inspect "$IMAGE" >/dev/null 2>&1
+}
+
+prepare_image() {
+    local rebuild=$1
+    local build_log
+    if [[ $rebuild == false ]] && image_available; then
+        ok "Broker image ready ($IMAGE; use ./mcb setup --rebuild to rebuild)"
+        return
+    fi
+
+    build_log=$(mktemp)
+    if (cd -- "$ROOT" && docker build -t "$IMAGE" .) >"$build_log" 2>&1; then
+        rm -f -- "$build_log"
+        ok "Broker image built ($IMAGE)"
+    else
+        show_failure_log "Broker image build failed." "$build_log"
+    fi
+}
+
+bootstrap_master_key() {
+    local existed=false
+    local output
+    [[ -e $MASTER_KEY ]] && existed=true
+    if ! output=$(COOKIE_BROKER_IMAGE="$IMAGE" "$ROOT/scripts/bootstrap-compose.sh" 2>&1); then
+        printf '%s\n' "$output" >&2
+        fail "Master-key bootstrap failed."
+    fi
+    if [[ $existed == true ]]; then
+        ok "Existing master key preserved"
+    else
+        ok "Master key created"
+    fi
+}
+
+read_user_list() {
+    local error_log
+    error_log=$(mktemp)
+    if ! USER_LIST=$(compose run --rm --no-deps --entrypoint brokerctl broker user list 2>"$error_log"); then
+        show_failure_log "Could not read broker users." "$error_log"
+    fi
+    rm -f -- "$error_log"
+}
+
+find_user() {
+    local wanted=$1
+    local username role scopes
+    FOUND_ROLE=
+    FOUND_SCOPES=
+    while IFS=$'\t' read -r username role scopes; do
+        if [[ $username == "$wanted" ]]; then
+            FOUND_ROLE=$role
+            FOUND_SCOPES=$scopes
+            return 0
+        fi
+    done <<<"$USER_LIST"
+    return 1
+}
+
+scope_present() {
+    [[ ,$1, == *,youtube/default,* ]]
+}
+
+validate_existing_user() {
+    local username=$1
+    local expected_role=$2
+    if [[ $FOUND_ROLE != "$expected_role" ]] || ! scope_present "$FOUND_SCOPES"; then
+        fail "$username already exists with unexpected access." "Expected role=$expected_role and grant youtube/default; inspect it with brokerctl before continuing."
+    fi
+}
+
+create_publisher() {
+    local error_log output prefix
+    if find_user browser-publisher; then
+        validate_existing_user browser-publisher publisher
+        ok "Publisher already exists (password was shown only when it was created)"
+        return
+    fi
+
+    error_log=$(mktemp)
+    if ! output=$(compose run --rm --no-deps --entrypoint brokerctl broker \
+        user add browser-publisher --role publisher --provider youtube --profile default 2>"$error_log"); then
+        show_failure_log "Could not create browser-publisher." "$error_log"
+    fi
+    rm -f -- "$error_log"
+    prefix='Generated password for browser-publisher (shown once): '
+    if [[ $output != "$prefix"* || $output == *$'\n'* ]]; then
+        fail "browser-publisher was created, but its generated password could not be read safely." "Reset it explicitly with brokerctl before configuring the extension."
+    fi
+    PUBLISHER_PASSWORD=${output#"$prefix"}
+    [[ -n $PUBLISHER_PASSWORD ]] || fail "browser-publisher returned an empty generated password."
+    PUBLISHER_CREATED=true
+    ok "Publisher created"
+}
+
+valid_password_file() {
+    [[ -f $1 && -s $1 && ! -L $1 ]]
+}
+
+generate_reader_password() {
+    local error_log
+    READER_PASSWORD_TEMP=$(mktemp "$SECRETS_DIR/.reader-password.XXXXXX")
+    chmod 0600 "$READER_PASSWORD_TEMP"
+    error_log=$(mktemp)
+    if ! docker run --rm --entrypoint brokerctl "$IMAGE" generate-key >"$READER_PASSWORD_TEMP" 2>"$error_log"; then
+        show_failure_log "Could not generate the reader password." "$error_log"
+    fi
+    rm -f -- "$error_log"
+    [[ -s $READER_PASSWORD_TEMP ]] || fail "Generated reader password is empty."
+}
+
+create_reader() {
+    local password_source error_log output
+    if find_user downloader; then
+        validate_existing_user downloader reader
+        ok "Reader already exists"
+        if [[ -e $READER_PASSWORD ]]; then
+            valid_password_file "$READER_PASSWORD" || fail "Reader password path is not a non-empty regular file: $READER_PASSWORD"
+            chmod 0600 "$READER_PASSWORD"
+            ok "Existing reader password file preserved"
+        else
+            warn "Reader password cannot be recovered; $READER_PASSWORD is missing."
+            printf '  Reset it explicitly with brokerctl if cookie-sync needs a new credential.\n'
+        fi
+        return
+    fi
+
+    if [[ -e $READER_PASSWORD ]]; then
+        valid_password_file "$READER_PASSWORD" || fail "Refusing invalid reader password path: $READER_PASSWORD"
+        chmod 0600 "$READER_PASSWORD"
+        password_source=$READER_PASSWORD
+    else
+        generate_reader_password
+        password_source=$READER_PASSWORD_TEMP
+    fi
+
+    error_log=$(mktemp)
+    if ! output=$(compose run --rm --no-deps -T --entrypoint brokerctl broker \
+        user add downloader --role reader --provider youtube --profile default \
+        --password-file /dev/stdin <"$password_source" 2>"$error_log"); then
+        show_failure_log "Could not create downloader." "$error_log"
+    fi
+    rm -f -- "$error_log"
+    [[ -z $output ]] || fail "downloader was created, but brokerctl returned unexpected output."
+    if [[ -n ${READER_PASSWORD_TEMP:-} ]]; then
+        mv -- "$READER_PASSWORD_TEMP" "$READER_PASSWORD"
+        READER_PASSWORD_TEMP=
+    fi
+    chmod 0600 "$READER_PASSWORD"
+    READER_CREATED=true
+    ok "Reader created and password stored with mode 0600"
+}
+
+broker_running() {
+    local container_id
+    container_id=$(compose ps -q broker 2>/dev/null) || return 1
+    [[ -n $container_id ]] || return 1
+    [[ $(docker inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null) == true ]]
+}
+
+health_check() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsS --max-time 2 "$BROKER_URL/healthz" >/dev/null 2>&1
+        return
+    fi
+    broker_running && compose exec -T broker wget -q -O /dev/null http://127.0.0.1:8787/healthz >/dev/null 2>&1
+}
+
+start_broker() {
+    local error_log
+    error_log=$(mktemp)
+    if ! compose up -d broker >"$error_log" 2>&1; then
+        show_failure_log "Broker failed to start." "$error_log"
+    fi
+    rm -f -- "$error_log"
+    ok "Broker started"
+}
+
+wait_for_health() {
+    local attempt
+    for attempt in {1..40}; do
+        if health_check; then
+            ok "Health check passed"
+            return
+        fi
+        sleep 0.5
+    done
+    fail "Broker did not become healthy at $BROKER_URL/healthz." "Run ./mcb logs for details."
+}
+
+print_setup_summary() {
+    printf '\nSetup complete\n\n'
+    printf 'Publisher (sensitive)\n'
+    printf '  username: browser-publisher\n'
+    if [[ $PUBLISHER_CREATED == true ]]; then
+        printf '  password: %s\n' "$PUBLISHER_PASSWORD"
+        printf '  This password is shown once; paste it into the extension now.\n'
+    else
+        printf '  password: existing password is not recoverable from the broker\n'
+    fi
+    printf '\nReader\n'
+    printf '  username: downloader\n'
+    if [[ -f $READER_PASSWORD ]]; then
+        printf '  password file: %s\n' "$READER_PASSWORD"
+    else
+        printf '  password file: missing; reset the existing reader explicitly if needed\n'
+    fi
+    printf '\nBrowser extension\n'
+    printf '  %s\n' "$EXTENSION_DIR"
+    printf '\nNext\n'
+    printf '  1. Open chrome://extensions\n'
+    printf '  2. Enable Developer mode\n'
+    printf '  3. Load unpacked: %s\n' "$EXTENSION_DIR"
+    printf '  4. Open extension Details and enable "Allow in incognito"\n'
+    printf '  5. Open "Settings and guide"\n'
+    printf '  6. Broker URL: %s\n' "$BROKER_URL"
+    printf '  7. Username: browser-publisher\n'
+    printf '  8. Paste the publisher password shown above\n'
+    printf '  9. Open the popup and click "Refresh session"\n'
+    printf '\nBroker\n  %s\n' "$BROKER_URL"
+}
+
+command_setup() {
+    local rebuild=false
+    if [[ ${1:-} == --rebuild && $# -eq 1 ]]; then
+        rebuild=true
+    elif [[ $# -ne 0 ]]; then
+        fail "Usage: ./mcb setup [--rebuild]"
+    fi
+
+    PUBLISHER_CREATED=false
+    PUBLISHER_PASSWORD=
+    READER_CREATED=false
+    READER_PASSWORD_TEMP=
+    trap 'if [[ -n ${READER_PASSWORD_TEMP:-} ]]; then rm -f -- "$READER_PASSWORD_TEMP"; fi' EXIT
+
+    printf 'Media Cookie Broker setup\n\n'
+    check_repository
+    ok "Repository root ($ROOT)"
+    check_docker_cli
+    ok "Docker found"
+    check_compose
+    ok "Docker Compose found"
+    check_daemon
+    ok "Docker daemon reachable"
+    prepare_image "$rebuild"
+    bootstrap_master_key
+    read_user_list
+    create_publisher
+    create_reader
+    start_broker
+    wait_for_health
+    print_setup_summary
+}
+
+command_up() {
+    [[ $# -eq 0 ]] || fail "Usage: ./mcb up"
+    preflight
+    [[ -s $MASTER_KEY ]] || fail "Master key is missing." "Run ./mcb setup first."
+    image_available || fail "Broker image $IMAGE is missing." "Run ./mcb setup first."
+    start_broker
+    wait_for_health
+    printf 'Broker: %s\n' "$BROKER_URL"
+}
+
+command_down() {
+    [[ $# -eq 0 ]] || fail "Usage: ./mcb down"
+    check_repository
+    check_docker_cli
+    check_compose
+    check_daemon
+    compose down
+    ok "Broker stopped; persistent data was preserved"
+}
+
+command_status() {
+    [[ $# -eq 0 ]] || fail "Usage: ./mcb status"
+    preflight
+    printf 'Media Cookie Broker status\n\n'
+    if broker_running; then
+        ok "Broker container running"
+    else
+        warn "Broker container is not running"
+        printf 'Broker: %s\nExtension: %s\n' "$BROKER_URL" "$EXTENSION_DIR"
+        return 1
+    fi
+    if health_check; then
+        ok "Health check passed"
+    else
+        warn "Health check failed"
+        printf '  Run ./mcb logs for details.\n'
+        return 1
+    fi
+    printf '\nBroker: %s\nExtension: %s\n' "$BROKER_URL" "$EXTENSION_DIR"
+}
+
+command_logs() {
+    if [[ $# -eq 0 ]]; then
+        compose logs --tail=200 broker
+    elif [[ $# -eq 1 && $1 == -f ]]; then
+        compose logs --tail=200 -f broker
+    else
+        fail "Usage: ./mcb logs [-f]"
+    fi
+}
+
+file_mode() {
+    if stat -c '%a' "$1" >/dev/null 2>&1; then
+        stat -c '%a' "$1"
+    else
+        stat -f '%Lp' "$1"
+    fi
+}
+
+doctor_pass() {
+    ok "$1"
+}
+
+doctor_fail() {
+    printf '✗ %s\n' "$1"
+    DOCTOR_FAILURES=$((DOCTOR_FAILURES + 1))
+}
+
+doctor_warning() {
+    warn "$1"
+    DOCTOR_WARNINGS=$((DOCTOR_WARNINGS + 1))
+}
+
+check_mode() {
+    local path=$1 expected=$2 label=$3 mode
+    mode=$(file_mode "$path" 2>/dev/null || true)
+    if [[ $mode == "$expected" ]]; then
+        doctor_pass "$label mode $expected"
+    else
+        doctor_fail "$label mode is ${mode:-unknown}; expected $expected"
+    fi
+}
+
+command_doctor() {
+    [[ $# -eq 0 ]] || fail "Usage: ./mcb doctor"
+    DOCTOR_FAILURES=0
+    DOCTOR_WARNINGS=0
+    printf 'Media Cookie Broker doctor\n\n'
+
+    if [[ -f $ROOT/docker-compose.yml && -f $ROOT/Dockerfile ]]; then
+        doctor_pass "Repository root ($ROOT)"
+    else
+        doctor_fail "Required repository files are missing"
+    fi
+    if command -v docker >/dev/null 2>&1; then
+        doctor_pass "$(docker --version 2>/dev/null || printf 'Docker CLI found')"
+    else
+        doctor_fail "Docker CLI is missing"
+    fi
+    if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        doctor_pass "$(docker compose version 2>/dev/null)"
+    else
+        doctor_fail "Docker Compose v2 is missing"
+    fi
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        doctor_pass "Docker daemon reachable"
+    else
+        doctor_fail "Docker daemon is not reachable"
+    fi
+
+    if [[ -d $SECRETS_DIR && ! -L $SECRETS_DIR ]]; then
+        doctor_pass "Secrets directory exists"
+        check_mode "$SECRETS_DIR" 700 "Secrets directory"
+    else
+        doctor_fail "Secrets directory is missing or unsafe"
+    fi
+    if [[ -f $MASTER_KEY && -s $MASTER_KEY && ! -L $MASTER_KEY ]]; then
+        doctor_pass "Master key exists and is non-empty"
+        check_mode "$MASTER_KEY" 444 "Master key"
+    else
+        doctor_fail "Master key is missing, empty, or unsafe"
+    fi
+    if command -v docker >/dev/null 2>&1 && image_available; then
+        doctor_pass "Broker image available ($IMAGE)"
+    else
+        doctor_fail "Broker image is unavailable ($IMAGE)"
+    fi
+    if command -v docker >/dev/null 2>&1 && broker_running; then
+        doctor_pass "Broker container running"
+    else
+        doctor_fail "Broker container is not running"
+    fi
+    if health_check; then
+        doctor_pass "healthz reachable"
+    else
+        doctor_fail "healthz is unreachable at $BROKER_URL/healthz"
+    fi
+    if [[ -f $EXTENSION_DIR/manifest.json ]]; then
+        doctor_pass "Extension manifest exists"
+    else
+        doctor_fail "Extension manifest is missing"
+    fi
+    if [[ -e $READER_PASSWORD ]]; then
+        if valid_password_file "$READER_PASSWORD"; then
+            doctor_pass "Reader password file exists"
+            check_mode "$READER_PASSWORD" 600 "Reader password"
+        else
+            doctor_fail "Reader password path is empty or unsafe"
+        fi
+    else
+        doctor_warning "Reader password file is absent (optional until cookie-sync is configured)"
+    fi
+    if [[ -x $ROOT/bin/cookie-sync ]]; then
+        doctor_pass "Host cookie-sync binary exists"
+    else
+        doctor_warning "Host cookie-sync binary is not built (optional until file sync is configured)"
+    fi
+
+    printf '\nLocal paths\n'
+    printf '  extension: %s\n' "$EXTENSION_DIR"
+    printf '  reader password: %s\n' "$READER_PASSWORD"
+    printf '\n'
+    if ((DOCTOR_FAILURES > 0)); then
+        printf 'Result: unhealthy (%d failure(s), %d warning(s))\n' "$DOCTOR_FAILURES" "$DOCTOR_WARNINGS"
+        return 1
+    fi
+    printf 'Result: healthy (%d warning(s))\n' "$DOCTOR_WARNINGS"
+}
+
+main() {
+    local command=${1:-help}
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
+    case "$command" in
+        setup) command_setup "$@" ;;
+        up) command_up "$@" ;;
+        down) command_down "$@" ;;
+        status) command_status "$@" ;;
+        logs) command_logs "$@" ;;
+        doctor) command_doctor "$@" ;;
+        extension-path)
+            [[ $# -eq 0 ]] || fail "Usage: ./mcb extension-path"
+            printf '%s\n' "$EXTENSION_DIR"
+            ;;
+        help | --help | -h)
+            [[ $# -eq 0 ]] || fail "Usage: ./mcb help"
+            usage
+            ;;
+        *)
+            printf 'Unknown command: %s\n\n' "$command" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

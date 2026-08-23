@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/segfault-dev/media-cookie-broker/internal/broker"
-	"github.com/segfault-dev/media-cookie-broker/internal/providers"
+	"github.com/segfault-stack/media-cookie-broker/internal/broker"
+	"github.com/segfault-stack/media-cookie-broker/internal/providers"
 )
 
 const (

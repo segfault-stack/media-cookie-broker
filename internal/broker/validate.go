@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/segfault-dev/media-cookie-broker/internal/providers"
+	"github.com/segfault-stack/media-cookie-broker/internal/providers"
 )
 
 var profileIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
