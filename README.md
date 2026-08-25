@@ -1,467 +1,258 @@
-<div align="center">
+# Media Cookie Broker
 
-# 🍪 Media Cookie Broker
-
-### Browser auth for unattended software — without running the browser on the server.
-
-**Human-in-the-loop browser authentication maintenance for unattended software.**
+Keep `yt-dlp` and other unattended software authenticated with browser-refreshed `cookies.txt` files—without running a browser on the server.
 
 [![Release](https://img.shields.io/github/v/release/segfault-stack/media-cookie-broker?include_prereleases&sort=semver&label=release)](https://github.com/segfault-stack/media-cookie-broker/releases)
 [![CI](https://github.com/segfault-stack/media-cookie-broker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/segfault-stack/media-cookie-broker/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/segfault-stack/media-cookie-broker)](LICENSE)
-![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)
-![Chromium MV3](https://img.shields.io/badge/Chromium-MV3-4285F4?logo=googlechrome&logoColor=white)
-
-[Quick start](#-quick-start) ·
-[yt-dlp](#-use-it-with-yt-dlp) ·
-[How it works](#-what-happens-when-auth-dies) ·
-[Integration](#-keep-using-cookiestxt) ·
-[Security](#-security) ·
-[Limitations](#-public-preview)
-
-</div>
-
----
-
-Media Cookie Broker was built for a recurring `yt-dlp` problem: the downloader runs unattended on a server, VPS, or NAS, while the authenticated browser session belongs on your own computer.
-
-It is not coupled to `yt-dlp`. Any downloader, bot, media service, or other consumer that reads a Netscape `cookies.txt` file—or integrates with the broker API—can use the same browser-backed session flow.
-
-Then a provider wants a **real browser** again — login, CAPTCHA, 2FA, account confirmation, or another interactive step.
-
-Media Cookie Broker handles that moment across two machines:
-
-> **consumer reports auth failure → Chrome notifies you → you click Refresh session → log in normally → fresh cookie revision goes back to the server**
-
-No permanent browser on the server.
-No VNC session beside every downloader.
-No manual cookie export + SCP ritual.
-
-> **Existing software does not need to understand Media Cookie Broker. If it reads `cookies.txt`, it can keep reading `cookies.txt`.**
 
 > [!WARNING]
-> **Public preview.** Browser cookies are bearer credentials. Use HTTPS for non-loopback deployments and read [SECURITY.md](SECURITY.md) before putting a broker on a real network.
+> **Public preview.** Media Cookie Broker handles browser cookies, which are bearer credentials. It has not been audited as production account infrastructure. Keep the broker loopback-only for the quick start, use HTTPS for every non-loopback connection, and read [Security](#security) before deploying it.
 
-## Two machines by design
+Media Cookie Broker was created for a recurring `yt-dlp` problem: the downloader runs on a server, VPS, or NAS, but the authenticated browser session—and the person who can complete login, CAPTCHA, or 2FA—lives on another computer.
+
+The project is not an `yt-dlp` plugin. Its broader contract is an ordinary Netscape `cookies.txt` file for existing consumers, plus an HTTP API for software that wants to participate in authentication-health reporting. YouTube is the primary preview workflow; other providers are experimental.
+
+[Quick start](#quick-start) · [Compatibility](#compatibility) · [Recovery flow](#when-authentication-expires) · [Security](#security) · [Limitations](#limitations) · [Documentation](#documentation)
+
+## How it fits
 
 ```text
-YOUR SERVER / VPS / NAS                    YOUR COMPUTER
+SERVER / VPS / NAS                         YOUR COMPUTER
 
 ┌──────────────────────┐                  ┌──────────────────────┐
-│ media app            │                  │ Chromium             │
-│ cookie-sync          │                  │ MCB extension        │
-│                      │                  │                      │
-│ Media Cookie Broker  │◄── SSH tunnel ──►│ human                │
-└──────────────────────┘    or HTTPS      └──────────────────────┘
-          │
-          ▼
-      cookies.txt
+│ yt-dlp or other app  │                  │ Chromium             │
+│        ▲             │                  │ MCB extension        │
+│   cookies.txt        │                  │ human login          │
+│        ▲             │                  └──────────┬───────────┘
+│   cookie-sync        │                             │
+│        ▲             │                    SSH tunnel or HTTPS
+│ Media Cookie Broker  │◄────────────────────────────┘
+└──────────────────────┘
 ```
 
-> **The browser is intentionally not on the server.** The broker stays loopback-bound by default; the desktop reaches it through an SSH tunnel for the quick start, or through protected HTTPS/private networking for a persistent deployment.
+The browser is intentionally not on the server. The broker stores scoped, revisioned cookie snapshots; `cookie-sync` writes them atomically as mode-`0600` Netscape cookie files; existing software keeps reading those files normally.
 
----
+Interactive authentication remains human-controlled. The extension never starts a login merely because a background process reported a failure.
 
-## 🚀 Quick start
+## Quick start
 
-### 🖥️ 1. On the server
+This route assumes:
+
+- an unprivileged Linux account on the server with `curl`, `tar`, Docker, and Docker Compose v2;
+- a desktop with SSH, `curl`, `tar`, and a Chromium-based browser that can load an unpacked extension;
+- network access to GitHub and container registries while the installers download and build the immutable `v0.3.0-preview` source;
+- `yt-dlp`, or another Netscape-cookie consumer, installed separately.
+
+The example runs the broker and `cookie-sync` on the same server. Keep the two terminal contexts distinct.
+
+### 1. Start the broker on the server
+
+Download and inspect the pinned installer before running it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install.sh | bash
+curl -fsSLo mcb-install.sh \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install.sh
+less mcb-install.sh
+bash mcb-install.sh
 ```
 
-It starts the loopback-only broker and prints the publisher credential needed by your browser.
+The installer builds the broker image, creates a loopback-only service, and prints:
 
-### 💻 2. On your computer
+- the exact `mcb status`, `mcb logs`, and `mcb doctor` command paths;
+- a one-time publisher password for the browser extension;
+- the location of the reader password used by `cookie-sync`.
 
-Open an SSH tunnel to the server and leave it running:
+Run the printed `mcb status` command. The broker should be running and healthy. Preserve the generated credentials; the publisher password is not recoverable later without resetting it.
+
+### 2. Connect Chromium from your computer
+
+Open a tunnel in a desktop terminal and leave it running:
 
 ```bash
 ssh -N -L 8787:127.0.0.1:8787 user@your-server
 ```
 
-`127.0.0.1` is the desktop end of the tunnel here; the broker itself remains loopback-only on the server.
+Here, `127.0.0.1:8787` on the desktop is one end of the SSH tunnel. The broker remains bound to server loopback.
 
-Install the desktop extension files:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-extension.sh | bash
-```
-
-Then open `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the printed path → **Allow in incognito**. Set the broker URL to `http://127.0.0.1:8787`, enter `browser-publisher` and the publisher password, then choose **YouTube / default → Refresh session**.
-
-When the popup says `Healthy · revision 1`, the browser ↔ broker recovery loop works.
-
-For an always-on deployment, expose the broker only through protected HTTPS or an appropriate private network path. Never expose it as public plain HTTP.
-
-### 🍪 3. Connect a consumer
+In another desktop terminal, download, inspect, and run the extension installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-cookie-sync.sh | bash
+curl -fsSLo mcb-extension-install.sh \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-extension.sh
+less mcb-extension-install.sh
+bash mcb-extension-install.sh
 ```
 
-It configures the Dockerized sidecar and prints the resulting Netscape cookie file, for example:
+Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, select the directory printed by the installer, and enable **Allow in incognito**.
+
+In the extension, set:
+
+- broker URL: `http://127.0.0.1:8787`;
+- username: `browser-publisher`;
+- password: the publisher password printed on the server.
+
+Choose **YouTube / default → Refresh session** and complete the provider login yourself. Success is visible as `Healthy · revision 1` in the extension popup.
+
+### 3. Create `cookies.txt` on the server
+
+Download and inspect the pinned consumer installer:
+
+```bash
+curl -fsSLo mcb-cookie-sync-install.sh \
+  https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-cookie-sync.sh
+less mcb-cookie-sync-install.sh
+bash mcb-cookie-sync-install.sh
+```
+
+Accept the loopback defaults when the sidecar runs beside the broker, enter the reader password printed during server setup, and choose the output directory. The installer prints the exact status/log commands and resulting file path, normally:
 
 ```text
 ~/media-cookies/youtube.txt
 ```
 
-Point your existing software at that file. The consumer can run on the broker host or any authorized host that can reach the broker through loopback, protected HTTPS, or appropriate private networking.
+Run the printed `cookie-sync status` command and confirm that the cookie file exists after the first successful sync.
 
-### Use it with yt-dlp
+### 4. Use it with yt-dlp
 
-Point `yt-dlp` at the synchronized cookie jar:
+Point `yt-dlp` at the synchronized file:
 
 ```bash
-yt-dlp --cookies ~/media-cookies/youtube.txt 'https://www.youtube.com/watch?v=...'
+yt-dlp --cookies ~/media-cookies/youtube.txt \
+  'https://www.youtube.com/watch?v=VIDEO_ID'
 ```
 
-The file is an ordinary Netscape cookie jar. Replace `yt-dlp` with any software that supports the same format, or use the broker API for a tighter integration.
+Replace `VIDEO_ID` with a real target that requires the authenticated account. A successful download of that target demonstrates the primary consumer path. Software that accepts a Netscape cookie file can use the same output path without knowing about Media Cookie Broker.
 
-| Integration | Status |
+For persistent remote access, updates, rollback, filesystem layout, and troubleshooting, continue with [installation and operations](docs/INSTALLATION.md). For multiple cookie targets or a consumer on another machine, read [cookie-sync integration](docs/COOKIE_SYNC.md).
+
+---
+
+## When authentication expires
+
+The complete feedback loop has an explicit human step:
+
+```text
+broker-aware consumer reports authentication_required
+        ↓
+extension observes the broker state and notifies the user
+        ↓
+user clicks Refresh session and completes browser authentication
+        ↓
+extension publishes a new scoped cookie revision
+        ↓
+cookie-sync atomically updates cookies.txt
+        ↓
+consumer can retry with the new revision
+```
+
+A plain `yt-dlp --cookies ...` process reads the synchronized file but does not report authentication failure to the broker. You can refresh manually at any time. Automatic failure notifications require a wrapper or consumer that calls the report API.
+
+For YouTube, isolated recovery opens a broker-owned incognito window by default and closes only that window after capture. Chromium shares one cookie store across all incognito windows, so recovery refuses to start while another incognito window is open. Optional normal-window recovery uses the current ordinary browser session and never closes that window automatically.
+
+Media Cookie Broker does not automate provider login, CAPTCHA, 2FA, account confirmation, or anti-bot controls.
+
+## Compatibility
+
+These levels describe different kinds of evidence; they are not interchangeable:
+
+| Path | Level |
 | --- | --- |
-| YouTube → `cookies.txt` → `yt-dlp` | Primary use case |
-| Any Netscape `cookies.txt` consumer | Compatible file contract |
-| Consumer or wrapper using the report API | Full authentication-failure feedback loop |
-| TikTok, Instagram, and X / Twitter capture | Experimental provider support |
-
-> [!NOTE]
-> A plain `yt-dlp --cookies ...` process consumes the synchronized file but does not report authentication failures back to the broker. Automatic `authentication_required` notifications require a broker-aware wrapper or another consumer that calls the report API. You can still refresh the browser session manually at any time.
-
----
-
-## 🔔 What happens when auth dies?
-
-```text
-remote consumer
-      │
-      │ authentication_required
-      ▼
-┌─────────────────────┐
-│ Media Cookie Broker │
-│ revision 17         │
-│ refresh required    │
-└──────────┬──────────┘
-           │ extension polls
-           ▼
-┌─────────────────────┐
-│ your Chromium       │
-│ 🔔 session needs you│
-└──────────┬──────────┘
-           │ Refresh session
-           ▼
-┌─────────────────────┐
-│ real browser login  │
-│ CAPTCHA / 2FA / etc │
-└──────────┬──────────┘
-           │ fresh scoped cookies
-           ▼
-┌─────────────────────┐
-│ broker revision 18  │
-│ encrypted + healthy │
-└──────────┬──────────┘
-           │
-           ▼
-      cookie-sync
-           │
-           ▼
-      cookies.txt
-           │
-           ▼
-   existing software
-```
-
-The browser handles the rare step that actually needs a human.
+| YouTube browser capture → broker → `cookies.txt` | Primary preview workflow |
+| `cookies.txt` → `yt-dlp` | Primary consumer use case |
+| Other Netscape `cookies.txt` consumers | Compatible by contract |
+| Consumer or wrapper using the report API | Supported interface |
+| TikTok, Instagram, and X / Twitter capture | Experimental |
+| Firefox extension, runtime providers, non-cookie browser state | Out of scope today |
 
-The broker handles everything around it: **state, revisions, health, ACLs, distribution, and coordination**.
+The maintained first-party YouTube path has automated coverage for broker, extension-policy, and synchronization behavior; real provider login remains an external interactive step. The `yt-dlp` integration uses its existing Netscape-cookie interface rather than an MCB-specific plugin. Contract-compatible applications may work without being tested by this project, while the report API adds the full failure-feedback loop for an exact provider, profile, and revision.
 
----
+Experimental providers are implemented but are not validated across every downloader, account state, or upstream change.
 
-## ✨ Why use it?
-
-| Without a broker | With Media Cookie Broker |
-| --- | --- |
-| Keep a browser/VNC session on every server | Use the browser you already use |
-| Manually export + copy cookies | Publish and sync revisions |
-| Notice auth failure after jobs break | Consumer can report `authentication_required` |
-| Replace cookie files in place | Atomic `cookies.txt` updates |
-| Guess which cookie dump is current | Revision + SHA metadata |
-| Build custom integration glue | Keep using Netscape `cookies.txt` |
-| Auto-trigger risky login flows | Human explicitly clicks **Refresh session** |
-
-The consumer boundary stays intentionally boring:
-
-```text
-broker → cookie-sync → cookies.txt → whatever already reads cookies.txt
-```
+Provider and consumer compatibility are separate. A consumer that reads Netscape cookies does not make every provider capture workflow supported.
 
----
+## What the broker and sync sidecar do
 
-## 📄 Keep using `cookies.txt`
+- store encrypted cookie snapshots by provider and logical profile;
+- enforce separate publisher, reader, and diagnostics-reader roles with exact grants;
+- track revisions, normalized consumer health reports, and bounded redacted diagnostics;
+- expose ETag-aware Netscape-cookie responses;
+- write cookie files and metadata atomically with mode `0600`;
+- preserve last-known-good files during invalid responses or temporary broker failures;
+- detect local file tampering and require a broker-backed refetch;
+- keep browser authentication behind an explicit user action.
 
-The Dockerized `cookie-sync` sidecar turns broker revisions into an ordinary Netscape cookie jar in a host directory shared with your downloader, bot, NAS, or media service.
+Broker profiles are logical sessions, not independent Chromium cookie stores. Provider policy is compiled into the broker and extension; there is no runtime plugin system in this preview.
 
-`cookie-sync` gives you:
+## Security
 
-- ETag-based sync;
-- atomic mode-`0600` writes;
-- last-known-good behavior;
-- provider/profile/revision metadata;
-- SHA-256 integrity checks;
-- fail-closed health reporting;
-- recovery from locally modified cookie/sidecar files.
+Browser cookies are bearer credentials. Anyone who obtains a valid cookie may be able to act as the corresponding account without knowing its password.
 
-> Don't want `cookie-sync`? An authorized consumer can use the broker's HTTP/Netscape response directly.
+The broker encrypts cookie snapshots with AES-256-GCM, with the master key stored outside SQLite. This protects a copied database only when the attacker does not also obtain the key; it does not protect a fully compromised browser, broker host, or authorized consumer.
 
-See [cookie-sync advanced setup](docs/COOKIE_SYNC.md) for multiple targets, named profiles, metadata, health reports, direct binary use, and manual Compose configuration.
+Operators must:
 
----
+- use HTTPS for every non-loopback broker connection;
+- keep separate publisher and reader credentials with exact provider/profile grants;
+- restrict access to extension storage, the master key, database, password files, cookie files, and metadata sidecars;
+- avoid publishing cookies, passwords, authorization headers, account identifiers, private endpoints, or unredacted logs;
+- back up the master key and broker data together and treat removal of either as potentially destructive.
 
-## 🕹️ Browser = human control plane
+Read [SECURITY.md](SECURITY.md) for the threat model and compromise response. Report vulnerabilities through GitHub private vulnerability reporting, never through a public issue containing sensitive evidence.
 
-The Manifest V3 extension:
+## Limitations
 
-- polls broker health every few minutes;
-- shows provider/profile state;
-- distinguishes **broker unreachable** from **provider auth broken**;
-- sends system notifications on meaningful transitions;
-- opens the status/action UI when you click a notification;
-- starts login **only after you click `Refresh session`**;
-- keeps bounded redacted local diagnostics;
-- optionally uploads scoped encrypted diagnostics.
+This is an early public preview with a best-effort support boundary. Only the latest preview release is expected to receive security fixes.
 
-It never starts an interactive login just because a background process complained.
+Important limitations:
 
-That human boundary is intentional.
+- only unpacked Chromium-extension installation is currently supported;
+- a human must complete interactive authentication and explicitly start recovery;
+- plain file consumers cannot report authentication failure without a wrapper;
+- isolated YouTube recovery requires other incognito windows to be closed;
+- normal-browser profiles do not isolate accounts from one another;
+- the extension stores its dedicated publisher credential in `chrome.storage.local`, not an operating-system keychain;
+- one current-revision authentication failure immediately requests refresh; quorum and post-refresh verification are not implemented;
+- there is no web administration, OAuth, high availability, replication, Firefox package, or runtime provider loading.
 
----
+See [known limitations](docs/KNOWN_LIMITATIONS.md) for the complete current list.
 
-## 🥷 YouTube recovery is isolated by default
+## Operations and recovery
 
-YouTube is the primary preview workflow.
+The installers print exact command paths for status and logs. Start troubleshooting with those commands:
 
-```text
-refresh required
-→ explicit human click
-→ fresh broker-owned incognito window
-→ normal Google / YouTube login
-→ capture YouTube-scoped cookies
-→ publish fresh revision
-→ close only the broker-owned window
-```
+- broker: `status`, `logs`, and `doctor`;
+- cookie-sync: `status` and `logs`;
+- extension: popup state and bounded redacted local diagnostics.
 
-Chromium shares one cookie store across all incognito windows, so isolated recovery refuses to start while another incognito window is open.
+Stopping containers does not remove the broker volume or synchronized cookie files. Removing the master key, broker volume, credentials, or cookie files is a separate destructive action; back up required state first. Detailed update, rollback, and recovery behavior is documented in [installation and operations](docs/INSTALLATION.md).
 
-Normal-browser recovery is also available. In normal mode:
+## Documentation
 
-- your ordinary browser session is used;
-- the normal window is never auto-closed;
-- changing accounts can affect everyday browser state.
-
-> Broker profiles are logical broker sessions, not extra Chromium cookie stores.
-
-Media Cookie Broker does **not** automate Google login, CAPTCHA, 2FA, or upstream anti-bot controls.
-
----
-
-## 🧬 Providers + profiles
-
-A session is:
-
-```text
-(provider, profile)
-```
-
-Examples:
-
-```text
-youtube/default
-youtube/music-bot
-youtube/private-account
-```
-
-| Provider | Recovery / capture | Status |
-| --- | --- | --- |
-| YouTube | isolated incognito by default; optional normal mode | ✅ **primary** |
-| TikTok | regular-browser capture | 🧪 experimental |
-| Instagram | regular-browser capture | 🧪 experimental |
-| X / Twitter | regular-browser capture | 🧪 experimental |
-
-Provider policy is source-defined in `internal/providers/` and `extension/providers/`.
-
-No runtime plugin system yet.
-
----
-
-## 🔐 Security
-
-Media Cookie Broker handles **bearer credentials**. Treat them like passwords.
-
-The broker encrypts cookie snapshots with **AES-256-GCM**. The master key stays outside SQLite.
-
-Keep these rules:
-
-- HTTPS for every non-loopback broker connection;
-- separate publisher and reader credentials;
-- exact provider/profile grants;
-- protect extension local storage;
-- protect the master key, SQLite volume, cookie files, sidecars, and password files;
-- never log cookie values, passwords, Authorization headers, master keys, or live session material.
-
-Encryption at rest helps if someone steals the database **without** the key. It does not save a host compromised together with its key.
-
-Read **[SECURITY.md](SECURITY.md)** for the full threat model.
-
-Security bugs → GitHub **private vulnerability reporting**, not public issues.
-
----
-
-## 🛠️ Operator cheat sheet
-
-The installers print the exact status and log commands for each installed instance. See [installation details](docs/INSTALLATION.md) for paths, updates, source setup, and troubleshooting.
-
----
-
-<details>
-<summary><strong>🧾 Revision + health semantics</strong></summary>
-
-Snapshots are revisioned per provider/profile.
-
-Ordinary publication deduplicates identical canonical cookie material.
-
-A successful explicit recovery always advances the revision, even when canonical cookie bytes are unchanged. Recovery is a lifecycle event: failures attached to the old revision naturally stop affecting current health.
-
-An `ok` report supersedes only the same consumer's previous report for that revision. One consumer's success does not erase another consumer's failure.
-
-Only reports from currently existing readers with an active grant to the exact provider/profile contribute to active health.
-
-Revision history is currently bounded to five snapshots per provider/profile.
-
-</details>
-
-<details>
-<summary><strong>👥 Users + ACLs</strong></summary>
-
-Users live in SQLite and are managed locally with `brokerctl`.
-
-Roles:
-
-```text
-publisher
-reader
-diagnostics_reader
-```
-
-Useful commands:
-
-```bash
-brokerctl user add
-brokerctl user list
-brokerctl user delete
-brokerctl user passwd
-brokerctl user grant
-brokerctl user revoke
-```
-
-There is deliberately no HTTP admin API or web admin panel in this preview.
-
-</details>
-
-<details>
-<summary><strong>🌐 HTTP API</strong></summary>
-
-Default-profile shorthand:
-
-```text
-PUT  /v1/providers/{provider}/cookies
-GET  /v1/providers/{provider}/cookies.txt
-GET  /v1/providers/{provider}/status
-POST /v1/providers/{provider}/reports
-```
-
-Named-profile routes insert `/profiles/{profile}` before the resource.
-
-Publisher polling:
-
-```text
-GET /v1/status
-```
-
-Profile-aware rollback:
-
-```bash
-docker compose exec broker \
-  brokerctl rollback \
-  --provider youtube \
-  --profile default \
-  --revision 1
-```
-
-</details>
-
----
-
-## 🧪 Development
-
-```bash
-bash -n mcb install*.sh scripts/*.sh tests/*.sh
-tests/mcb-test.sh
-tests/install-test.sh
-tests/install-extension-test.sh
-tests/install-cookie-sync-test.sh
-tests/package-extension-test.sh
-tests/onboarding-docs-test.sh
-
-gofmt -w ./cmd ./internal
-go test ./...
-go test -race ./...
-go vet ./...
-
-npm --prefix extension test
-node --check extension/service-worker.js
-
-docker compose config
-docker build --target broker -t media-cookie-broker:preview .
-docker build --target cookie-sync -t media-cookie-broker-cookie-sync:preview .
-COOKIE_BROKER_TEST_IMAGE=media-cookie-broker:preview \
-COOKIE_SYNC_TEST_IMAGE=media-cookie-broker-cookie-sync:preview \
-tests/container-smoke.sh
-```
-
----
-
-## 🚧 Public preview
-
-The useful core works, but this is still early software.
-
-Not in scope right now:
-
-- web admin panel;
-- OAuth;
-- automatic login / CAPTCHA / 2FA;
-- HA / replication;
-- Firefox packaging;
-- runtime plugins;
-- generic non-cookie browser state;
-- quorum-based refresh policy.
-
-More detail:
-
-- [Installation details](docs/INSTALLATION.md)
-- [cookie-sync advanced setup](docs/COOKIE_SYNC.md)
+- [Installation and server operations](docs/INSTALLATION.md)
+- [cookie-sync consumer integration](docs/COOKIE_SYNC.md)
+- [Provider architecture and policy](docs/PROVIDERS.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
-- [Provider notes](docs/PROVIDERS.md)
-- [Project polish roadmap](docs/PROJECT_POLISH_ROADMAP.md)
-- [Support](SUPPORT.md)
+- [Security policy and threat model](SECURITY.md)
+- [Support boundary](SUPPORT.md)
 - [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+- [Project polish roadmap](docs/PROJECT_POLISH_ROADMAP.md)
 
----
+## Development
 
-<div align="center">
+Clone with the pinned agent playbook and run the documented verification suite:
 
-### 🍪 Browser auth when a human is needed. Plain `cookies.txt` everywhere else.
+```bash
+git clone --recurse-submodules \
+  https://github.com/segfault-stack/media-cookie-broker.git
+cd media-cookie-broker
+go test ./...
+npm --prefix extension test
+tests/onboarding-docs-test.sh
+```
 
-MIT — see [LICENSE](LICENSE).
+The complete local and container checks are in [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are welcome within the project's preview scope; never use real cookies or credentials in tests, issues, or pull requests.
 
-</div>
+## License
+
+[MIT](LICENSE)
