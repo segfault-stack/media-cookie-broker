@@ -1,0 +1,52 @@
+name: Configuration help
+description: Ask for help with installation, connectivity, or consumer configuration.
+title: "[Help]: "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read the installation, cookie-sync, limitations, and security documentation first.
+
+        **Never paste real cookies, exported cookie files, passwords, master keys, Authorization headers, account identifiers, private endpoints, or unredacted production logs.** Replace private values with clearly fake examples.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Server installation
+        - Desktop connection or SSH tunnel
+        - Browser extension
+        - cookie-sync consumer
+        - HTTPS or private networking
+        - Upgrade or recovery
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to achieve?
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Include commands and redacted output only when they are necessary.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Docker/Compose and Chromium versions, plus a redacted description of the network path.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed all credentials, cookies, keys, account identifiers, private endpoints, and live session material.
+          required: true
