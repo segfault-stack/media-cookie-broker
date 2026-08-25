@@ -1,5 +1,7 @@
 # Media Cookie Broker
 
+![Media Cookie Broker — browser-refreshed cookies for unattended software](docs/hero.png)
+
 Keep `yt-dlp` and other unattended software authenticated with browser-refreshed `cookies.txt` files—without running a browser on the server.
 
 [![Release](https://img.shields.io/github/v/release/segfault-stack/media-cookie-broker?include_prereleases&sort=semver&label=release)](https://github.com/segfault-stack/media-cookie-broker/releases)
