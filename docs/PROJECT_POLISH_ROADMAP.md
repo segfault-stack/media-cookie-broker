@@ -34,10 +34,10 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 
 ## Phase 2: contributor and support hygiene
 
-- [ ] Add issue forms for bugs, configuration help, and provider/integration requests.
-- [ ] Put a prominent warning in issue forms: never attach real cookies, passwords, keys, Authorization headers, or private endpoints.
-- [ ] Add a pull request template with tests, security-boundary, and documentation checkboxes.
-- [ ] Add a support policy that separates public usage questions from private vulnerability reports.
+- [x] Add issue forms for bugs, configuration help, and provider/integration requests.
+- [x] Put a prominent warning in issue forms: never attach real cookies, passwords, keys, Authorization headers, or private endpoints.
+- [x] Add a pull request template with tests, security-boundary, and documentation checkboxes.
+- [x] Add a support policy that separates public usage questions from private vulnerability reports.
 - [ ] Add a concise Code of Conduct if outside contributions begin.
 - [ ] Replace generic labels with a small useful set for broker, extension, cookie-sync, providers, security, and documentation.
 - [ ] Create a few real roadmap or good-first issues before advertising contributor labels.
@@ -49,11 +49,11 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 - [x] Replace the open Dependabot update with a manually verified `golang.org/x/crypto` update; do not dismiss security alerts as presentation cleanup.
 - [x] Add CI for Go tests, race detection, vet, extension tests, shell/onboarding tests, Compose validation, and container smoke tests.
 - [x] Enable CodeQL default setup for Go and JavaScript.
-- [ ] Add a CI badge only after the workflow is reliably green.
-- [ ] Protect `main` with a ruleset after the required check names exist.
-- [ ] Require pull requests and passing checks; block force-pushes and branch deletion.
-- [ ] Avoid mandatory external approval while the project has a single maintainer.
-- [ ] Prefer squash merges, delete merged branches, and allow branches to be updated before merge.
+- [x] Add a CI badge only after the workflow is reliably green.
+- [x] Protect `main` after the required check names exist.
+- [x] Require pull requests and passing checks; block force-pushes and branch deletion.
+- [x] Avoid mandatory external approval while the project has a single maintainer.
+- [x] Prefer squash merges, delete merged branches, and allow branches to be updated before merge.
 - [ ] Review GitHub Actions permissions and restrict third-party actions once the actual workflow set is known.
 
 ## Phase 4: reproducible preview release

@@ -1,0 +1,57 @@
+name: Provider or consumer integration request
+description: Propose a provider workflow or a consumer integration with concrete evidence.
+title: "[Integration]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the real workflow and compatibility boundary. Architecture-only speculation is not enough.
+
+        **Never attach real cookies, credentials, private endpoints, account identifiers, or captured production data.** Use fake fixtures and public documentation links.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Integration kind
+      options:
+        - Browser/provider capture
+        - cookies.txt consumer
+        - Broker API consumer
+        - Operational tooling
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: project
+    attributes:
+      label: Project or provider
+      placeholder: Public name and canonical URL
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Concrete workflow
+      description: Describe who runs what, on which machine, and where human authentication is required.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Compatibility evidence
+      description: Link public documentation for cookie format, API behavior, or provider domains. Separate verified behavior from assumptions.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Known limitations or risks
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I used only public documentation and unmistakably fake data.
+          required: true

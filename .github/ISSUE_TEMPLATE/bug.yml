@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible defect without including credentials or live session data.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Media Cookie Broker.
+
+        **Never paste real cookies, exported cookie files, passwords, master keys, Authorization headers, account identifiers, private endpoints, or unredacted production logs.** Use unmistakably fake values and `example.invalid` when a reproduction needs sample data. Report security vulnerabilities through [private vulnerability reporting](https://github.com/segfault-stack/media-cookie-broker/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag, container label, or commit SHA where the problem occurs.
+      placeholder: v0.x.y-preview or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Broker server
+        - cookie-sync
+        - Browser extension
+        - Installer or mcb helper
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, architecture, Docker/Compose version, Chromium version, and relevant network shape. Redact private hosts and account data.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest safe sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted diagnostics
+      description: Include only the minimum redacted output required to understand the failure.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed all credentials, cookies, keys, account identifiers, private endpoints, and live session material.
+          required: true
+        - label: This is not a confidential security vulnerability.
+          required: true

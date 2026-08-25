@@ -7,6 +7,7 @@
 **Human-in-the-loop browser authentication maintenance for unattended software.**
 
 [![Release](https://img.shields.io/github/v/release/segfault-stack/media-cookie-broker?include_prereleases&sort=semver&label=release)](https://github.com/segfault-stack/media-cookie-broker/releases)
+[![CI](https://github.com/segfault-stack/media-cookie-broker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/segfault-stack/media-cookie-broker/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/segfault-stack/media-cookie-broker)](LICENSE)
 ![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)
 ![Chromium MV3](https://img.shields.io/badge/Chromium-MV3-4285F4?logo=googlechrome&logoColor=white)
@@ -451,6 +452,7 @@ More detail:
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Provider notes](docs/PROVIDERS.md)
 - [Project polish roadmap](docs/PROJECT_POLISH_ROADMAP.md)
+- [Support](SUPPORT.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
