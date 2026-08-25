@@ -57,10 +57,12 @@ If the reader password file was lost, reset the `downloader` credential explicit
 Developers can run the same server helper from a checkout:
 
 ```bash
-git clone https://github.com/segfault-stack/media-cookie-broker.git
+git clone --recurse-submodules https://github.com/segfault-stack/media-cookie-broker.git
 cd media-cookie-broker
 ./mcb setup
 ```
+
+For an existing developer checkout, initialize the pinned agent playbook with `git submodule update --init --recursive`. The playbook is maintenance guidance and is not used by the broker at runtime.
 
 Source mode can build the image and supports `./mcb setup --rebuild`. Developers may load `./extension` directly in Chromium.
 
