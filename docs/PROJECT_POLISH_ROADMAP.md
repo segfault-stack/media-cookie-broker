@@ -58,15 +58,15 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 
 ## Phase 4: reproducible preview release
 
-- [ ] Verify the current tree locally before tagging.
+- [x] Verify the current tree locally before tagging.
 - [ ] Publish an honest `v0.3.0-preview`; do not create a fake stable release for the `latest` badge.
 - [ ] Use release notes centered on the outcome: keeping remote consumers authenticated from a desktop browser.
 - [ ] Include a tested/compatible/experimental matrix and upgrade notes.
 - [ ] Attach a versioned extension ZIP and SHA-256 checksums.
 - [ ] Consider Linux `amd64`/`arm64` binaries, a Compose bundle, SBOM, and provenance when the build pipeline is ready.
 - [ ] Sign the release tag when a maintainable signing workflow exists.
-- [ ] Pin installation documentation to a release or tag instead of treating `raw/main` as a reproducible distribution channel.
-- [ ] Keep an inspect-before-run installation path alongside convenience commands.
+- [x] Pin installation documentation to a release or tag instead of treating `raw/main` as a reproducible distribution channel.
+- [x] Keep an inspect-before-run installation path alongside convenience commands.
 
 ## Phase 5: project identity
 

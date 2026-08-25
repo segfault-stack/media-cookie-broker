@@ -8,4 +8,4 @@ if [[ -x $SCRIPT_DIR/install.sh ]]; then
 fi
 
 printf 'install-server.sh is deprecated; running the canonical install.sh.\n' >&2
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh | bash -s -- "$@"
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install.sh | bash -s -- "$@"

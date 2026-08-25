@@ -67,7 +67,7 @@ YOUR SERVER / VPS / NAS                    YOUR COMPUTER
 ### 🖥️ 1. On the server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install.sh | bash
 ```
 
 It starts the loopback-only broker and prints the publisher credential needed by your browser.
@@ -85,7 +85,7 @@ ssh -N -L 8787:127.0.0.1:8787 user@your-server
 Install the desktop extension files:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-extension.sh | bash
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-extension.sh | bash
 ```
 
 Then open `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select the printed path → **Allow in incognito**. Set the broker URL to `http://127.0.0.1:8787`, enter `browser-publisher` and the publisher password, then choose **YouTube / default → Refresh session**.
@@ -97,7 +97,7 @@ For an always-on deployment, expose the broker only through protected HTTPS or a
 ### 🍪 3. Connect a consumer
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-cookie-sync.sh | bash
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-cookie-sync.sh | bash
 ```
 
 It configures the Dockerized sidecar and prints the resulting Netscape cookie file, for example:

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPOSITORY=segfault-stack/media-cookie-broker
-REF=${MCB_INSTALL_REF:-main}
+REF=${MCB_INSTALL_REF:-v0.3.0-preview}
 DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 BASE=$DATA_HOME/media-cookie-broker-extension
 TARGET=$BASE/current
