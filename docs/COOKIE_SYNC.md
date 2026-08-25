@@ -7,7 +7,7 @@
 The public installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install-cookie-sync.sh | bash
+curl -fsSL https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install-cookie-sync.sh | bash
 ```
 
 asks for one broker route, reader credential, provider/profile, and host output directory. It builds the dedicated `cookie-sync` Docker target from temporary source, then discards the source tree. Host Go is not required.

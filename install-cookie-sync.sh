@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 REPOSITORY=segfault-stack/media-cookie-broker
-REF=${MCB_INSTALL_REF:-main}
+REF=${MCB_INSTALL_REF:-v0.3.0-preview}
 IMAGE=${COOKIE_SYNC_IMAGE:-media-cookie-broker-cookie-sync:preview}
 DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 TARGET=$DATA_HOME/media-cookie-broker-cookie-sync

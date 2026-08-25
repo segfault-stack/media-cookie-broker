@@ -7,10 +7,12 @@ The main README covers the shortest safe first run. This page explains what the 
 To review the canonical server installer first:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/main/install.sh
+curl -fsSLO https://raw.githubusercontent.com/segfault-stack/media-cookie-broker/v0.3.0-preview/install.sh
 less install.sh
 bash install.sh
 ```
+
+The public installers default to the same `v0.3.0-preview` source tag. Set `MCB_INSTALL_REF` only when you deliberately want to test another reviewed tag or commit.
 
 `install-server.sh` is only a compatibility wrapper. All server installation logic lives in `install.sh`.
 
