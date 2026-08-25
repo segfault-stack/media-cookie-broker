@@ -24,6 +24,8 @@
 - Publication boundary: source, documentation, container build definitions, installers, and versioned extension ZIP/checksums are public. Operator credentials, cookies, databases, keys, diagnostics, and private deployment details are not.
 - Supported versions: while pre-1.0, only the latest public-preview release is expected to receive security fixes; see `SECURITY.md`.
 - Contribution and support policy: `CONTRIBUTING.md` and `SUPPORT.md`.
+- Contribution intake and maintainer-review policy: focused public issues and pull requests are accepted within the boundaries in `CONTRIBUTING.md`; changes merge only after the repository's required checks and maintainer review.
+- Agent-assisted public contribution policy: no additional project-specific disclosure rule is documented; agents must not claim human review and may publish or merge only when the maintainer explicitly authorizes that external action.
 - Private security reporting route: GitHub private vulnerability reporting, as documented in `SECURITY.md`.
 - External actions requiring maintainer authorization: pushes, repository setting changes, releases, package publication, deployments, and messages or submissions outside the repository.
 
@@ -38,7 +40,7 @@
 
 ## Enabled playbook profiles
 
-- Enabled profiles: `none` (release `v0.2.1` publishes no technology profiles).
+- Enabled profiles: `none` (release `v0.4.1` publishes no technology profiles).
 
 ## Project-specific decisions
 
@@ -48,7 +50,7 @@
 ## Pinned playbook
 
 - Upstream: `https://github.com/segfault-stack/oss-agent-playbook`
-- Immutable ref: `v0.2.1`
-- Resolved commit: `b75930a93fd32bd36ac1b6ed91e399a00aef3618`
+- Immutable ref: `v0.4.1`
+- Resolved commit: `6ac968f8251b15ee78454fdd1d4358a23d2f71da`
 - Import method: `git submodule`
 - Imported or last reviewed: `2026-08-25`
