@@ -39,7 +39,7 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 - [x] Add a pull request template with tests, security-boundary, and documentation checkboxes.
 - [x] Add a support policy that separates public usage questions from private vulnerability reports.
 - [ ] Add a concise Code of Conduct if outside contributions begin.
-- [ ] Replace generic labels with a small useful set for broker, extension, cookie-sync, providers, security, and documentation.
+- [x] Add a small useful label set for broker, extension, cookie-sync, providers, security, integrations, and documentation.
 - [ ] Create a few real roadmap or good-first issues before advertising contributor labels.
 - [ ] Keep Discussions disabled until recurring questions justify a public Q&A area.
 - [ ] Fill the GitHub Project with a public roadmap or disable the empty tab.
@@ -54,15 +54,15 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 - [x] Require pull requests and passing checks; block force-pushes and branch deletion.
 - [x] Avoid mandatory external approval while the project has a single maintainer.
 - [x] Prefer squash merges, delete merged branches, and allow branches to be updated before merge.
-- [ ] Review GitHub Actions permissions and restrict third-party actions once the actual workflow set is known.
+- [x] Review GitHub Actions permissions; CI has read-only repository access and uses only GitHub-owned actions pinned to verified commit SHAs.
 
 ## Phase 4: reproducible preview release
 
 - [x] Verify the current tree locally before tagging.
-- [ ] Publish an honest `v0.3.0-preview`; do not create a fake stable release for the `latest` badge.
-- [ ] Use release notes centered on the outcome: keeping remote consumers authenticated from a desktop browser.
-- [ ] Include a tested/compatible/experimental matrix and upgrade notes.
-- [ ] Attach a versioned extension ZIP and SHA-256 checksums.
+- [x] Publish an honest `v0.3.0-preview`; do not create a fake stable release for the `latest` badge.
+- [x] Use release notes centered on the outcome: keeping remote consumers authenticated from a desktop browser.
+- [x] Include a tested/compatible/experimental matrix and upgrade notes.
+- [x] Attach a versioned extension ZIP and SHA-256 checksums.
 - [ ] Consider Linux `amd64`/`arm64` binaries, a Compose bundle, SBOM, and provenance when the build pipeline is ready.
 - [ ] Sign the release tag when a maintainable signing workflow exists.
 - [x] Pin installation documentation to a release or tag instead of treating `raw/main` as a reproducible distribution channel.
