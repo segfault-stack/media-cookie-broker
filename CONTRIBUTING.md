@@ -26,6 +26,14 @@ See [docs/PROVIDERS.md](docs/PROVIDERS.md) for the current contracts. YouTube's 
 
 ## Development checks
 
+Clone with submodules, or initialize an existing checkout before repository-maintenance work:
+
+```bash
+git submodule update --init --recursive
+```
+
+The immutable playbook revision and resolved commit are recorded in `PROJECT_AGENT_CONTEXT.md`. To update it, review a newer release, check out that exact tag in `.agent/oss-playbook`, update the single recorded pin, run the playbook and project checks, and commit the gitlink and context together. Roll back a problematic update by reverting that dependency-style commit.
+
 ```bash
 bash -n mcb install*.sh scripts/*.sh tests/*.sh
 tests/mcb-test.sh
