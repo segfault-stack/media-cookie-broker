@@ -4,7 +4,7 @@
 
 ### Browser auth for unattended software — without running the browser on the server.
 
-**Human-in-the-loop browser authentication maintenance for unattended media software.**
+**Human-in-the-loop browser authentication maintenance for unattended software.**
 
 [![Release](https://img.shields.io/github/v/release/segfault-stack/media-cookie-broker?include_prereleases&sort=semver&label=release)](https://github.com/segfault-stack/media-cookie-broker/releases)
 [![License](https://img.shields.io/github/license/segfault-stack/media-cookie-broker)](LICENSE)
@@ -12,6 +12,7 @@
 ![Chromium MV3](https://img.shields.io/badge/Chromium-MV3-4285F4?logo=googlechrome&logoColor=white)
 
 [Quick start](#-quick-start) ·
+[yt-dlp](#-use-it-with-yt-dlp) ·
 [How it works](#-what-happens-when-auth-dies) ·
 [Integration](#-keep-using-cookiestxt) ·
 [Security](#-security) ·
@@ -21,7 +22,9 @@
 
 ---
 
-Your downloader, bot, NAS, or media service runs remotely. Your logged-in browser stays with you. Media Cookie Broker connects those two worlds only when a provider needs a human again.
+Media Cookie Broker was built for a recurring `yt-dlp` problem: the downloader runs unattended on a server, VPS, or NAS, while the authenticated browser session belongs on your own computer.
+
+It is not coupled to `yt-dlp`. Any downloader, bot, media service, or other consumer that reads a Netscape `cookies.txt` file—or integrates with the broker API—can use the same browser-backed session flow.
 
 Then a provider wants a **real browser** again — login, CAPTCHA, 2FA, account confirmation, or another interactive step.
 
@@ -103,6 +106,26 @@ It configures the Dockerized sidecar and prints the resulting Netscape cookie fi
 ```
 
 Point your existing software at that file. The consumer can run on the broker host or any authorized host that can reach the broker through loopback, protected HTTPS, or appropriate private networking.
+
+### Use it with yt-dlp
+
+Point `yt-dlp` at the synchronized cookie jar:
+
+```bash
+yt-dlp --cookies ~/media-cookies/youtube.txt 'https://www.youtube.com/watch?v=...'
+```
+
+The file is an ordinary Netscape cookie jar. Replace `yt-dlp` with any software that supports the same format, or use the broker API for a tighter integration.
+
+| Integration | Status |
+| --- | --- |
+| YouTube → `cookies.txt` → `yt-dlp` | Primary use case |
+| Any Netscape `cookies.txt` consumer | Compatible file contract |
+| Consumer or wrapper using the report API | Full authentication-failure feedback loop |
+| TikTok, Instagram, and X / Twitter capture | Experimental provider support |
+
+> [!NOTE]
+> A plain `yt-dlp --cookies ...` process consumes the synchronized file but does not report authentication failures back to the broker. Automatic `authentication_required` notifications require a broker-aware wrapper or another consumer that calls the report API. You can still refresh the browser session manually at any time.
 
 ---
 
@@ -427,6 +450,7 @@ More detail:
 - [cookie-sync advanced setup](docs/COOKIE_SYNC.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Provider notes](docs/PROVIDERS.md)
+- [Project polish roadmap](docs/PROJECT_POLISH_ROADMAP.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
