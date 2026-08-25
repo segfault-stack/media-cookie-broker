@@ -103,7 +103,7 @@ Supported normalized kinds are `ok`, `authentication_required`, `access_denied`,
 
 ## Direct binary use for developers
 
-The Docker image is the normal distribution path. Developers can still build the binary directly with Go 1.24+:
+The Docker image is the normal distribution path. Developers can still build the binary directly with Go 1.25+:
 
 ```bash
 go build -o bin/cookie-sync ./cmd/cookie-sync

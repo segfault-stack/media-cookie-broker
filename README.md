@@ -8,7 +8,7 @@
 
 [![Release](https://img.shields.io/github/v/release/segfault-stack/media-cookie-broker?include_prereleases&sort=semver&label=release)](https://github.com/segfault-stack/media-cookie-broker/releases)
 [![License](https://img.shields.io/github/license/segfault-stack/media-cookie-broker)](LICENSE)
-![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)
 ![Chromium MV3](https://img.shields.io/badge/Chromium-MV3-4285F4?logo=googlechrome&logoColor=white)
 
 [Quick start](#-quick-start) ·

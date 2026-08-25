@@ -46,7 +46,7 @@ Do not present the project as an `yt-dlp` plugin, a Chromium extension, or a gen
 
 ## Phase 3: verification and repository protection
 
-- [ ] Resolve the open Dependabot update for `golang.org/x/crypto`; do not dismiss security alerts as presentation cleanup.
+- [x] Replace the open Dependabot update with a manually verified `golang.org/x/crypto` update; do not dismiss security alerts as presentation cleanup.
 - [x] Add CI for Go tests, race detection, vet, extension tests, shell/onboarding tests, Compose validation, and container smoke tests.
 - [x] Enable CodeQL default setup for Go and JavaScript.
 - [ ] Add a CI badge only after the workflow is reliably green.
